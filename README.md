@@ -14,6 +14,9 @@
 - **Database**
   - OracleDB
   - [Valkey](https://valkey.io/)
+- **Programming Language**
+  - Python
+  - Java
 
 ## Feature
 - **LLM Configuration**
