@@ -1,0 +1,22 @@
+.viki-header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: var(--primary-color);
+    color: var(--font-color);
+    height: 48px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header-title {
+    font-size: 1.25rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+}
+
+.header-icon {
+    height: 42px;
+    width: 42px;
+    margin-right: 8px;
+}
