@@ -1,0 +1,14 @@
+:root {
+    --primary-color: #4285F4;
+    --card-background: #FFFFFF;
+    --card-border: #E0E0E0;
+    --card-font-color: #333333;
+    font-family: 'Arial', sans-serif;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
