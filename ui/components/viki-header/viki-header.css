@@ -3,9 +3,9 @@
     align-items: center;
     padding: 0.75rem 1rem;
     background-color: var(--primary-color);
-    color: var(--font-color);
+    color: var(--primary-font-color);
     height: 48px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px var(--shadow-medium);
 }
 
 .header-title {

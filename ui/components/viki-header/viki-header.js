@@ -5,14 +5,8 @@ export class VikiHeader extends BaseComponent {
         super('viki-header');
     }
 
-    async connectedCallback() {
-        const shadowRoot = await super.connectedCallback();
-        this.componentReady(shadowRoot);
-    }
-    
-    componentReady(shadowRoot) {
-        // Additional initialization can be added here if needed
-        console.log('VIKI Header component is ready');
+   connectedCallback() {
+        super.connectedCallback();
     }
 }
 

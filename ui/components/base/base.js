@@ -36,8 +36,4 @@ export class BaseComponent extends HTMLElement {
                 });
         });
     }
-
-    componentReady() {
-        // Default implementation (can be empty)
-    }
 }

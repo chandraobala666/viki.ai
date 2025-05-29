@@ -1,0 +1,39 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100vh;
+}
+
+.main-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+.content-area {
+    display: flex;
+    flex: 1;
+    height: calc(100vh - 60px); /* Adjust based on header height */
+    overflow: hidden;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-primary);
+    overflow: hidden;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .content-area {
+        flex-direction: column;
+    }
+    
+    viki-left-splitter {
+        height: auto;
+        width: 100%;
+    }
+}

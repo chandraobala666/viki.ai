@@ -1,9 +1,40 @@
 :root {
+    /* Primary Brand Colors */
     --primary-color: #4285F4;
-    --font-color: #FFFFFF;
-    --card-background: #FFFFFF;
-    --card-border: #E0E0E0;
-    --card-font-color: #333333;
+    --primary-font-color: #FFFFFF;
+    
+    /* Background Colors */
+    --background-primary: #FFFFFF;
+    --background-secondary: #f8f9fa;
+    --background-tertiary: #fafafa;
+    
+    /* Text Colors */
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-light: #FFFFFF;
+    
+    /* Border Colors */
+    --border-primary: #E0E0E0;
+    --border-light: #f0f0f0;
+    
+    /* Shadow Colors */
+    --shadow-light: rgba(0, 0, 0, 0.05);
+    --shadow-medium: rgba(0, 0, 0, 0.1);
+    
+    /* Scrollbar Colors */
+    --scrollbar-track: #f1f1f1;
+    --scrollbar-thumb: #c1c1c1;
+    --scrollbar-thumb-hover: #a8a8a8;
+    
+    /* Interactive Elements */
+    --hover-background: #f0f0f0;
+    
+    /* Legacy Support (keeping existing variables for compatibility) */
+    --font-color: var(--primary-font-color);
+    --card-background: var(--background-primary);
+    --card-border: var(--border-primary);
+    --card-font-color: var(--text-primary);
+    
     font-family: 'Arial', sans-serif;
 }
 

@@ -1,0 +1,185 @@
+:host {
+    display: block;
+    width: 300px;
+    height: 100%;
+    background-color: var(--background-secondary);
+    border-right: 1px solid var(--border-primary);
+    transition: width 0.3s ease;
+}
+
+.viki-left-splitter {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+.splitter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: var(--background-primary);
+    border-bottom: 1px solid var(--border-primary);
+    box-shadow: 0 2px 4px var(--shadow-medium);
+}
+
+.splitter-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.hamburger-toggle {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    cursor: pointer;
+    padding: 8px;
+    gap: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.hamburger-toggle:hover {
+    background-color: var(--hover-background);
+}
+
+.hamburger-toggle span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background-color: var(--text-secondary);
+    transition: all 0.3s ease;
+    border-radius: 1px;
+}
+
+/* Nav Options Styles */
+.nav-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 0;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border-radius: 4px;
+    color: var(--text-secondary);
+}
+
+.nav-item:hover {
+    background-color: var(--hover-background);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background-color: var(--active-background, rgba(0, 0, 0, 0.05));
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.nav-icon {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 24px;
+    height: 24px;
+}
+
+.nav-icon svg,
+.nav-icon img {
+    width: 24px;
+    height: 24px;
+    color: currentColor;
+}
+
+.nav-label {
+    font-size: 14px;
+}
+
+/* Collapsed state styles */
+:host(.collapsed) {
+    width: 60px;
+}
+
+:host(.collapsed) .nav-label {
+    display: none;
+}
+
+:host(.collapsed) .nav-item {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+:host(.collapsed) .splitter-content {
+    padding: 20px 0;
+}
+
+:host(.collapsed) .content-section {
+    display: none;
+}
+
+:host(.collapsed) .splitter-header h3 {
+    display: none;
+}
+
+/* Hamburger animation when collapsed */
+.hamburger-toggle.active span:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+
+.hamburger-toggle.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger-toggle.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(7px, -6px);
+}
+
+.splitter-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.content-section {
+    background-color: var(--background-primary);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px var(--shadow-light);
+    border: 1px solid var(--border-primary);
+    margin-top: 16px;
+}
+
+.content-section p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Scrollbar styling */
+.splitter-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.splitter-content::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 3px;
+}
+
+.splitter-content::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+}
+
+.splitter-content::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
