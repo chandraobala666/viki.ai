@@ -35,7 +35,7 @@
   - Provide collection of documents
 - **Agents**
   - *Simple Agents:* It supports connecting LLM with Tools and RAG
-  - *Multi Agent:** Orchestrate between Agents.
+  - *Multi Agent:* Orchestrate between Agents.
 - **Chat**
   - End user interface to Talk to Agent. 
 
