@@ -22,3 +22,9 @@ build/
 
 # Local development environment
 .service/
+
+# SQLite database files
+sqlite/
+**/sqlite/
+*.sqlite
+*.db
