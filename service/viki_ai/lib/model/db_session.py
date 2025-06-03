@@ -66,3 +66,36 @@ class DatabaseSession:
             raise
         finally:
             session.close()
+    
+    @classmethod
+    def get_db(cls):
+        """
+        Database session dependency for FastAPI
+        This function will be used by FastAPI as a dependency
+        to get a database session for each request
+        
+        Yields:
+            SQLAlchemy Session object
+        """
+        if cls._session_factory is None:
+            raise RuntimeError("Database session factory not initialized. Call DatabaseSession.initialize() first.")
+            
+        session = cls._session_factory()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+            
+# FastAPI compatibility function
+def get_db():
+    """
+    Get database session for FastAPI dependency injection
+    
+    Yields:
+        SQLAlchemy Session: Database session
+    """
+    yield from DatabaseSession.get_db()
