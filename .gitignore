@@ -22,6 +22,7 @@ build/
 
 # Local development environment
 .service/
+seed_data.rest
 
 # SQLite database files
 sqlite/
