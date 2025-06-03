@@ -1,7 +1,7 @@
-# VIKI - Open Agent Platform
+# VIKI AI - Agent Platform
 
 ## Overview
-- VIKI, Open Agent Platform that helps to create multiple Agents.  
+- VIKI AI, Agent Platform that helps to create multiple Agents.  
 - These agents can be connected to a wide range of tools using Anthropic - [MCP](https://modelcontextprotocol.io/introduction), Retrieval Augmented Generation (RAG), and agents to agent orchestration using [Langgraph](https://www.langchain.com/langgraph).
 
 ## Tech Stack
@@ -13,7 +13,7 @@
   - [Milvus](https://milvus.io/)
 - **Database**
   - OracleDB
-  - [Valkey](https://valkey.io/)
+  - SQLLite v3
 - **Programming Language**
   - Python
   - Java
