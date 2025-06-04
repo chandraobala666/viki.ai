@@ -4,12 +4,12 @@ import sys
 import uvicorn
 from fastapi import FastAPI, APIRouter
 
-from viki_ai.lib.util.viki_logger import setup_logging
-from viki_ai.lib.cmd_line.cli import load_environment_variables
-from viki_ai.lib.db_config.db_connect import create_db_engine
-from viki_ai.lib.util.version_util import get_version
-from viki_ai.lib.router import get_routers
-from viki_ai.lib.model.db_session import DatabaseSession
+from .lib.util.viki_logger import setup_logging
+from .lib.cmd_line.cli import load_environment_variables
+from .lib.db_config.db_connect import create_db_engine
+from .lib.util.version_util import get_version
+from .lib.router import get_routers
+from .lib.model.db_session import DatabaseSession
 
 def main():
     """

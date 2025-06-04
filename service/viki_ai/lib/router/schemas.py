@@ -1,75 +1,117 @@
 """
 Pydantic schemas for the models
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict
+from datetime import datetime
+
+
+class CommonModelConfig:
+    """Common configuration for all Pydantic models that map to DB entities"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 class AgentBase(BaseModel):
-    agt_name: str
-    agt_description: Optional[str] = None
-    agt_llc_id: str
-    agt_system_prompt: Optional[str] = None
+    name: str = Field(..., alias="agt_name", description="The name of the agent")
+    description: Optional[str] = Field(None, alias="agt_description", description="Detailed description of the agent's purpose and capabilities")
+    llmConfig: str = Field(..., alias="agt_llc_id", description="Reference to the LLM configuration used by this agent")
+    systemPrompt: Optional[str] = Field(None, alias="agt_system_prompt", description="System prompt that defines the agent's personality and behavior")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class AgentCreate(AgentBase):
-    agt_id: str
+    id: str = Field(..., alias="agt_id", description="Unique identifier for the agent")
 
 
 class AgentUpdate(BaseModel):
-    agt_name: Optional[str] = None
-    agt_description: Optional[str] = None
-    agt_llc_id: Optional[str] = None
-    agt_system_prompt: Optional[str] = None
+    name: Optional[str] = Field(None, alias="agt_name", description="The name of the agent") 
+    description: Optional[str] = Field(None, alias="agt_description", description="Detailed description of the agent's purpose and capabilities")
+    llmConfig: Optional[str] = Field(None, alias="agt_llc_id", description="Reference to the LLM configuration used by this agent")
+    systemPrompt: Optional[str] = Field(None, alias="agt_system_prompt", description="System prompt that defines the agent's personality and behavior")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class AgentResponse(AgentBase):
-    agt_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+    id: str = Field(..., alias="agt_id", description="Unique identifier for the agent")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the agent")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the agent was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the agent")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the agent was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 class LLMConfigBase(BaseModel):
-    llc_provider_type_cd: str
-    llc_model_cd: str
-    llc_endpoint_url: Optional[str] = None
-    llc_api_key: Optional[str] = None
-    llc_fls_id: Optional[str] = None
+    providerTypeCode: str = Field(..., alias="llc_provider_type_cd", description="LLM provider type code (e.g., 'OPENAI', 'ANTHROPIC', 'HUGGINGFACE')")
+    modelCode: str = Field(..., alias="llc_model_cd", description="Model identifier for the selected provider (e.g., 'gpt-4', 'claude-3-opus')")
+    endpointUrl: Optional[str] = Field(None, alias="llc_endpoint_url", description="Custom API endpoint URL if not using the default provider endpoint")
+    apiKey: Optional[str] = Field(None, alias="llc_api_key", description="API key for authenticating with the LLM provider")
+    fileStore: Optional[str] = Field(None, alias="llc_fls_id", description="Associated file store ID for this LLM configuration")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class LLMConfigCreate(LLMConfigBase):
-    llc_id: str
+    id: str = Field(..., alias="llc_id", description="Unique identifier for the LLM configuration")
 
 
 class LLMConfigUpdate(BaseModel):
-    llc_provider_type_cd: Optional[str] = None
-    llc_model_cd: Optional[str] = None
-    llc_endpoint_url: Optional[str] = None
-    llc_api_key: Optional[str] = None
-    llc_fls_id: Optional[str] = None
+    providerTypeCode: Optional[str] = Field(None, alias="llc_provider_type_cd", description="LLM provider type code (e.g., 'OPENAI', 'ANTHROPIC', 'HUGGINGFACE')")
+    modelCode: Optional[str] = Field(None, alias="llc_model_cd", description="Model identifier for the selected provider")
+    endpointUrl: Optional[str] = Field(None, alias="llc_endpoint_url", description="Custom API endpoint URL")
+    apiKey: Optional[str] = Field(None, alias="llc_api_key", description="API key for authenticating with the LLM provider")
+    fileStore: Optional[str] = Field(None, alias="llc_fls_id", description="Associated file store ID")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class LLMConfigResponse(LLMConfigBase):
-    llc_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+    id: str = Field(..., alias="llc_id", description="Unique identifier for the LLM configuration")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this configuration")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the configuration was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this configuration")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the configuration was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 class AgentToolBase(BaseModel):
-    ato_agt_id: str
-    ato_tol_id: str
+    agent: str = Field(..., alias="ato_agt_id", description="ID of the agent that uses this tool")
+    tool: str = Field(..., alias="ato_tol_id", description="ID of the tool being associated with the agent")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class AgentToolCreate(AgentToolBase):
@@ -77,19 +119,27 @@ class AgentToolCreate(AgentToolBase):
 
 
 class AgentToolResponse(AgentToolBase):
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this association")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when this association was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this association")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when this association was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 class AgentKnowledgeBaseBase(BaseModel):
-    akb_agt_id: str
-    akb_knb_id: str
+    agent: str = Field(..., alias="akb_agt_id", description="ID of the agent that uses this knowledge base")
+    knowledgeBase: str = Field(..., alias="akb_knb_id", description="ID of the knowledge base being associated with the agent")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class AgentKnowledgeBaseCreate(AgentKnowledgeBaseBase):
@@ -97,115 +147,146 @@ class AgentKnowledgeBaseCreate(AgentKnowledgeBaseBase):
 
 
 class AgentKnowledgeBaseResponse(AgentKnowledgeBaseBase):
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this association")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when this association was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this association")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when this association was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 # Knowledge Base Schemas
 class KnowledgeBaseBase(BaseModel):
-    knb_name: str
-    knb_description: Optional[str] = None
+    name: str = Field(..., alias="knb_name", description="Name of the knowledge base")
+    description: Optional[str] = Field(None, alias="knb_description", description="Description of the knowledge base's contents and purpose")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class KnowledgeBaseCreate(KnowledgeBaseBase):
-    knb_id: str
+    id: str = Field(..., alias="knb_id", description="Unique identifier for the knowledge base")
 
 
 class KnowledgeBaseUpdate(BaseModel):
-    knb_name: Optional[str] = None
-    knb_description: Optional[str] = None
+    name: Optional[str] = Field(None, alias="knb_name", description="Name of the knowledge base")
+    description: Optional[str] = Field(None, alias="knb_description", description="Description of the knowledge base's contents and purpose")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class KnowledgeBaseResponse(KnowledgeBaseBase):
-    knb_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+    id: str = Field(..., alias="knb_id", description="Unique identifier for the knowledge base")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this knowledge base")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the knowledge base was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this knowledge base")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the knowledge base was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 class KnowledgeBaseDocumentCreate(BaseModel):
-    kbd_knb_id: str
-    kbd_fls_id: str
+    knowledgeBase: str = Field(..., alias="kbd_knb_id", description="ID of the knowledge base that contains this document")
+    fileStore: str = Field(..., alias="kbd_fls_id", description="ID of the file in the file store")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class KnowledgeBaseDocumentResponse(BaseModel):
-    kbd_knb_id: str
-    kbd_fls_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    knowledgeBase: str = Field(..., alias="kbd_knb_id", description="ID of the knowledge base that contains this document")
+    fileStore: str = Field(..., alias="kbd_fls_id", description="ID of the file in the file store")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who added this document")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the document was added")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this document")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the document was last updated")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
 # Tool Schemas
 class ToolBase(BaseModel):
-    tol_name: str
-    tol_description: Optional[str] = None
-    tol_mcp_command: str
+    name: str = Field(..., alias="tol_name", description="Name of the tool")
+    description: Optional[str] = Field(None, alias="tol_description", description="Description of the tool's functionality and purpose")
+    mcpCommand: str = Field(..., alias="tol_mcp_command", description="Model Context Protocol command for this tool")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class ToolCreate(ToolBase):
-    tol_id: str
+    id: str = Field(..., alias="tol_id", description="Unique identifier for the tool")
 
 
 class ToolUpdate(BaseModel):
-    tol_name: Optional[str] = None
-    tol_description: Optional[str] = None
-    tol_mcp_command: Optional[str] = None
+    name: Optional[str] = Field(None, alias="tol_name", description="Name of the tool")
+    description: Optional[str] = Field(None, alias="tol_description", description="Description of the tool's functionality and purpose")
+    mcpCommand: Optional[str] = Field(None, alias="tol_mcp_command", description="Model Context Protocol command for this tool")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
-class ToolResponse(ToolBase):
-    tol_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+class ToolResponse(ToolBase, CommonModelConfig):
+    id: str = Field(..., alias="tol_id", description="Unique identifier for the tool")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this tool")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the tool was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this tool")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the tool was last updated")
 
 
 class ToolEnvironmentVariableBase(BaseModel):
-    tev_key: str
-    tev_value: Optional[str] = None
+    key: str = Field(..., alias="tev_key", description="Environment variable key name")
+    value: Optional[str] = Field(None, alias="tev_value", description="Environment variable value")
 
 
 class ToolEnvironmentVariableCreate(ToolEnvironmentVariableBase):
-    tev_tol_id: str
+    tool: str = Field(..., alias="tev_tol_id", description="ID of the tool that uses this environment variable")
 
 
-class ToolEnvironmentVariableResponse(ToolEnvironmentVariableBase):
-    tev_tol_id: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+class ToolEnvironmentVariableResponse(ToolEnvironmentVariableBase, CommonModelConfig):
+    tool: str = Field(..., alias="tev_tol_id", description="ID of the tool that uses this environment variable")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this environment variable")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the environment variable was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this environment variable")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the environment variable was last updated")
 
 
 # Lookup Type Schemas
 class LookupTypeBase(BaseModel):
-    lkt_type: str
-    lkt_description: Optional[str] = None
+    typeCode: str = Field(..., alias="lkt_type", description="Unique type code for the lookup category")
+    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type category")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class LookupTypeCreate(LookupTypeBase):
@@ -213,45 +294,57 @@ class LookupTypeCreate(LookupTypeBase):
 
 
 class LookupTypeUpdate(BaseModel):
-    lkt_description: Optional[str] = None
+    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type category")
 
 
-class LookupTypeResponse(LookupTypeBase):
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
+class LookupTypeResponse(LookupTypeBase, CommonModelConfig):
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup type")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup type was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup type")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup type was last updated")
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
+    def model_dump(self, **kwargs):
+        # Force by_alias=False to use field names instead of aliases
+        kwargs.setdefault('by_alias', False)
+        return super().model_dump(**kwargs)
+    
+    def model_dump_json(self, **kwargs):
+        # Force by_alias=False for JSON serialization too
+        kwargs.setdefault('by_alias', False)
+        return super().model_dump_json(**kwargs)
 
 
 # Lookup Detail Schemas
 class LookupDetailBase(BaseModel):
-    lkd_code: str
-    lkd_description: Optional[str] = None
-    lkd_sub_code: Optional[str] = None
-    lkd_sort: Optional[int] = None
+    code: str = Field(..., alias="lkd_code", description="Unique code within the lookup type")
+    description: Optional[str] = Field(None, alias="lkd_description", description="Description of this lookup value")
+    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Optional sub-classification code")
+    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for displaying lookup values")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class LookupDetailCreate(LookupDetailBase):
-    lkd_lkt_type: str
+    typeCode: str = Field(..., alias="lkd_lkt_type", description="Reference to the lookup type this detail belongs to")
 
 
 class LookupDetailUpdate(BaseModel):
-    lkd_description: Optional[str] = None
-    lkd_sub_code: Optional[str] = None
-    lkd_sort: Optional[int] = None
+    description: Optional[str] = Field(None, alias="lkd_description", description="Description of this lookup value")
+    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Optional sub-classification code")
+    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for displaying lookup values")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
-class LookupDetailResponse(LookupDetailBase):
-    lkd_lkt_type: str
-    created_by: Optional[str] = None
-    creation_dt: Optional[str] = None
-    last_updated_by: Optional[str] = None
-    last_updated_dt: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
+    typeCode: str = Field(..., alias="lkd_lkt_type", description="Reference to the lookup type this detail belongs to")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup detail")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup detail was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup detail")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup detail was last updated")

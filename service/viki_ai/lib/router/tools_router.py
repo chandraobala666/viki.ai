@@ -15,6 +15,7 @@ from .schemas import (
     ToolEnvironmentVariableResponse,
     ToolEnvironmentVariableBase
 )
+from .response_utils import serialize_response, serialize_response_list
 
 router = APIRouter(
     prefix="/tools",
@@ -23,16 +24,17 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=List[ToolResponse])
+@router.get("/")
 def get_tools(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
     Get all tools
     """
     tools = db.query(Tool).offset(skip).limit(limit).all()
-    return tools
+    tool_responses = [ToolResponse.model_validate(tool, from_attributes=True) for tool in tools]
+    return serialize_response_list(tool_responses)
 
 
-@router.get("/{tool_id}", response_model=ToolResponse)
+@router.get("/{tool_id}")
 def get_tool(tool_id: str, db: Session = Depends(get_db)):
     """
     Get a tool by ID
@@ -43,30 +45,38 @@ def get_tool(tool_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"Tool with ID {tool_id} not found"
         )
-    return tool
+    tool_response = ToolResponse.model_validate(tool, from_attributes=True)
+    return serialize_response(tool_response)
 
 
-@router.post("/", response_model=ToolResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_tool(tool: ToolCreate, db: Session = Depends(get_db)):
     """
     Create a new tool
     """
-    db_tool = db.query(Tool).filter(Tool.tol_id == tool.tol_id).first()
+    db_tool = db.query(Tool).filter(Tool.tol_id == tool.id).first()
     
     if db_tool:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Tool with ID {tool.tol_id} already exists"
+            detail=f"Tool with ID {tool.id} already exists"
         )
     
-    db_tool = Tool(**tool.dict())
+    # Create new tool with mapped field names
+    db_tool = Tool(
+        tol_id=tool.id,
+        tol_name=tool.name,
+        tol_description=tool.description,
+        tol_mcp_command=tool.mcpCommand
+    )
     db.add(db_tool)
     db.commit()
     db.refresh(db_tool)
-    return db_tool
+    tool_response = ToolResponse.model_validate(db_tool, from_attributes=True)
+    return serialize_response(tool_response)
 
 
-@router.put("/{tool_id}", response_model=ToolResponse)
+@router.put("/{tool_id}")
 def update_tool(tool_id: str, tool: ToolUpdate, db: Session = Depends(get_db)):
     """
     Update a tool
@@ -80,13 +90,23 @@ def update_tool(tool_id: str, tool: ToolUpdate, db: Session = Depends(get_db)):
         )
     
     update_data = tool.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_tool, key, value)
+    
+    # Map field names back to database column names
+    field_to_db_map = {
+        "name": "tol_name",
+        "description": "tol_description",
+        "mcpCommand": "tol_mcp_command"
+    }
+    
+    for field, value in update_data.items():
+        db_field = field_to_db_map.get(field, field)
+        setattr(db_tool, db_field, value)
     
     db.add(db_tool)
     db.commit()
     db.refresh(db_tool)
-    return db_tool
+    tool_response = ToolResponse.model_validate(db_tool, from_attributes=True)
+    return serialize_response(tool_response)
 
 
 @router.delete("/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -108,7 +128,7 @@ def delete_tool(tool_id: str, db: Session = Depends(get_db)):
 
 
 # Tool Environment Variable Endpoints
-@router.get("/{tool_id}/env-variables", response_model=List[ToolEnvironmentVariableResponse])
+@router.get("/{tool_id}/env-variables")
 def get_tool_environment_variables(tool_id: str, db: Session = Depends(get_db)):
     """
     Get all environment variables for a tool
@@ -126,10 +146,11 @@ def get_tool_environment_variables(tool_id: str, db: Session = Depends(get_db)):
         ToolEnvironmentVariable.tev_tol_id == tool_id
     ).all()
     
-    return env_vars
+    env_var_responses = [ToolEnvironmentVariableResponse.model_validate(env_var, from_attributes=True) for env_var in env_vars]
+    return serialize_response_list(env_var_responses)
 
 
-@router.post("/{tool_id}/env-variables", response_model=ToolEnvironmentVariableResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{tool_id}/env-variables", status_code=status.HTTP_201_CREATED)
 def add_environment_variable_to_tool(tool_id: str, env_var: ToolEnvironmentVariableBase, db: Session = Depends(get_db)):
     """
     Add an environment variable to a tool
@@ -146,29 +167,30 @@ def add_environment_variable_to_tool(tool_id: str, env_var: ToolEnvironmentVaria
     # Check if the environment variable already exists
     db_env_var = db.query(ToolEnvironmentVariable).filter(
         ToolEnvironmentVariable.tev_tol_id == tool_id,
-        ToolEnvironmentVariable.tev_key == env_var.tev_key
+        ToolEnvironmentVariable.tev_key == env_var.key
     ).first()
     
     if db_env_var:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Environment variable '{env_var.tev_key}' already exists for Tool {tool_id}"
+            detail=f"Environment variable '{env_var.key}' already exists for Tool {tool_id}"
         )
     
     # Create the environment variable
     db_env_var = ToolEnvironmentVariable(
         tev_tol_id=tool_id,
-        tev_key=env_var.tev_key,
-        tev_value=env_var.tev_value
+        tev_key=env_var.key,
+        tev_value=env_var.value
     )
     
     db.add(db_env_var)
     db.commit()
     db.refresh(db_env_var)
-    return db_env_var
+    env_var_response = ToolEnvironmentVariableResponse.model_validate(db_env_var, from_attributes=True)
+    return serialize_response(env_var_response)
 
 
-@router.put("/{tool_id}/env-variables/{env_key}", response_model=ToolEnvironmentVariableResponse)
+@router.put("/{tool_id}/env-variables/{env_key}")
 def update_environment_variable(tool_id: str, env_key: str, env_var: ToolEnvironmentVariableBase, db: Session = Depends(get_db)):
     """
     Update an environment variable for a tool
@@ -186,13 +208,14 @@ def update_environment_variable(tool_id: str, env_key: str, env_var: ToolEnviron
         )
     
     # Update the environment variable
-    setattr(db_env_var, "tev_key", env_var.tev_key)
-    setattr(db_env_var, "tev_value", env_var.tev_value)
+    setattr(db_env_var, "tev_key", env_var.key)
+    setattr(db_env_var, "tev_value", env_var.value)
     
     db.add(db_env_var)
     db.commit()
     db.refresh(db_env_var)
-    return db_env_var
+    env_var_response = ToolEnvironmentVariableResponse.model_validate(db_env_var, from_attributes=True)
+    return serialize_response(env_var_response)
 
 
 @router.delete("/{tool_id}/env-variables/{env_key}", status_code=status.HTTP_204_NO_CONTENT)
