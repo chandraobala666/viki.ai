@@ -4,6 +4,7 @@ Agent router for VIKI API
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
 
 from ..model.agent import Agent
 from ..model.db_session import get_db
@@ -55,20 +56,17 @@ def create_agent(agent: AgentCreate, db: Session = Depends(get_db)):
     
     Creates a new AI agent with the specified configuration.
     
-    - **id**: Unique identifier for the agent
     - **name**: Human-readable name for the agent
     - **description**: Detailed description of the agent's purpose
     - **llmConfig**: Reference to the LLM configuration to use
     - **systemPrompt**: System prompt that defines the agent's behavior
     """
-    # Check if agent with the same ID already exists
-    db_agent = db.query(Agent).filter(Agent.agt_id == agent.id).first()
-    if db_agent:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Agent with ID {agent.id} already exists")
+    # Generate unique agent ID
+    agent_id = str(uuid.uuid4())
     
     # Create new agent
     db_agent = Agent(
-        agt_id=agent.id,
+        agt_id=agent_id,
         agt_name=agent.name,
         agt_description=agent.description,
         agt_llc_id=agent.llmConfig,

@@ -15,16 +15,7 @@ from .schemas import (
     LookupDetailUpdate,
     LookupDetailResponse
 )
-
-
-def serialize_response(pydantic_obj):
-    """Helper function to serialize Pydantic objects with field names instead of aliases"""
-    return pydantic_obj.model_dump(by_alias=False)
-
-
-def serialize_response_list(pydantic_objects):
-    """Helper function to serialize lists of Pydantic objects with field names"""
-    return [serialize_response(obj) for obj in pydantic_objects]
+from .response_utils import serialize_response, serialize_response_list
 
 router = APIRouter(
     prefix="/lookups",

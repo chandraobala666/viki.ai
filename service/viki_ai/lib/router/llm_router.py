@@ -4,6 +4,7 @@ LLM router for VIKI API
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
 
 from ..model.llm import LLMConfig
 from ..model.db_session import get_db
@@ -53,23 +54,20 @@ def create_llm_config(llm_config: LLMConfigCreate, db: Session = Depends(get_db)
     """
     Create a new LLM configuration
     
-    Creates a new configuration for connecting to an LLM provider.
+    Creates a new configuration for connecting to an LLM provider. A unique ID will be automatically generated.
     
-    - **id**: Unique identifier for this LLM configuration
-    - **providerTypeCode**: LLM provider type code (e.g., 'OPENAI', 'ANTHROPIC')
+    - **providerTypeCode**: LLM provider type code (e.g., 'OPENAI', 'ANTHROPIC', 'OLLAMA')
     - **modelCode**: Model identifier for the selected provider
     - **endpointUrl**: (Optional) Custom API endpoint URL
     - **apiKey**: (Optional) API key for authenticating with the provider
     - **fileStore**: (Optional) Associated file store ID
     """
-    # Check if LLM config with the same ID already exists
-    db_llm_config = db.query(LLMConfig).filter(LLMConfig.llc_id == llm_config.id).first()
-    if db_llm_config:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"LLM configuration with ID {llm_config.id} already exists")
+    # Generate a unique ID for the LLM configuration
+    llm_id = str(uuid.uuid4())
     
     # Create new LLM config
     db_llm_config = LLMConfig(
-        llc_id=llm_config.id,
+        llc_id=llm_id,
         llc_provider_type_cd=llm_config.providerTypeCode,
         llc_model_cd=llm_config.modelCode,
         llc_endpoint_url=llm_config.endpointUrl,

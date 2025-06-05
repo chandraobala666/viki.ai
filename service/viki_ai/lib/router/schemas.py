@@ -4,6 +4,7 @@ Pydantic schemas for the models
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict
 from datetime import datetime
+import uuid
 
 
 class CommonModelConfig:
@@ -29,7 +30,20 @@ class AgentBase(BaseModel):
 
 
 class AgentCreate(AgentBase):
-    id: str = Field(..., alias="agt_id", description="Unique identifier for the agent")
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Support Assistant",
+                "description": "Agent for handling customer support queries",
+                "llmConfig": "llm-01",
+                "systemPrompt": "You are a helpful customer support assistant."
+            }
+        }
+    )
 
 
 class AgentUpdate(BaseModel):
@@ -40,7 +54,15 @@ class AgentUpdate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Updated Support Assistant",
+                "description": "Enhanced agent for handling customer support queries with additional capabilities",
+                "llmConfig": "llm-02",
+                "systemPrompt": "You are an expert customer support assistant with deep product knowledge."
+            }
+        }
     )
 
 
@@ -73,7 +95,21 @@ class LLMConfigBase(BaseModel):
 
 
 class LLMConfigCreate(LLMConfigBase):
-    id: str = Field(..., alias="llc_id", description="Unique identifier for the LLM configuration")
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "providerTypeCode": "OPENAI",
+                "modelCode": "gpt-4",
+                "endpointUrl": "https://api.openai.com/v1",
+                "apiKey": "your-api-key-here",
+                "fileStore": None
+            }
+        }
+    )
 
 
 class LLMConfigUpdate(BaseModel):
@@ -85,7 +121,16 @@ class LLMConfigUpdate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "providerTypeCode": "ANTHROPIC",
+                "modelCode": "claude-3-opus",
+                "endpointUrl": "https://api.anthropic.com/v1",
+                "apiKey": "your-updated-api-key-here",
+                "fileStore": None
+            }
+        }
     )
 
 
@@ -115,7 +160,16 @@ class AgentToolBase(BaseModel):
 
 
 class AgentToolCreate(AgentToolBase):
-    pass
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "agent": "agent-01",
+                "tool": "tool-01"
+            }
+        }
+    )
 
 
 class AgentToolResponse(AgentToolBase):
@@ -144,6 +198,17 @@ class AgentKnowledgeBaseBase(BaseModel):
 
 class AgentKnowledgeBaseCreate(AgentKnowledgeBaseBase):
     pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "agent": "agent-01",
+                "knowledgeBase": "kb-01"
+            }
+        }
+    )
 
 
 class AgentKnowledgeBaseResponse(AgentKnowledgeBaseBase):
@@ -172,7 +237,18 @@ class KnowledgeBaseBase(BaseModel):
 
 
 class KnowledgeBaseCreate(KnowledgeBaseBase):
-    id: str = Field(..., alias="knb_id", description="Unique identifier for the knowledge base")
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Company Documentation",
+                "description": "Contains all company policies and procedures"
+            }
+        }
+    )
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -181,7 +257,13 @@ class KnowledgeBaseUpdate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Updated Company Documentation",
+                "description": "Enhanced documentation with additional company policies and procedures"
+            }
+        }
     )
 
 
@@ -206,7 +288,13 @@ class KnowledgeBaseDocumentCreate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "knowledgeBase": "kb-01",
+                "fileStore": "file-001"
+            }
+        }
     )
 
 
@@ -239,7 +327,19 @@ class ToolBase(BaseModel):
 
 
 class ToolCreate(ToolBase):
-    id: str = Field(..., alias="tol_id", description="Unique identifier for the tool")
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Weather API",
+                "description": "Gets current weather information for a location",
+                "mcpCommand": "weather_api"
+            }
+        }
+    )
 
 
 class ToolUpdate(BaseModel):
@@ -249,7 +349,14 @@ class ToolUpdate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Enhanced Weather API",
+                "description": "Gets current weather information and forecasts for a location",
+                "mcpCommand": "enhanced_weather_api"
+            }
+        }
     )
 
 
@@ -264,10 +371,33 @@ class ToolResponse(ToolBase, CommonModelConfig):
 class ToolEnvironmentVariableBase(BaseModel):
     key: str = Field(..., alias="tev_key", description="Environment variable key name")
     value: Optional[str] = Field(None, alias="tev_value", description="Environment variable value")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "key": "API_KEY",
+                "value": "updated-api-key-value"
+            }
+        }
+    )
 
 
 class ToolEnvironmentVariableCreate(ToolEnvironmentVariableBase):
     tool: str = Field(..., alias="tev_tol_id", description="ID of the tool that uses this environment variable")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "tool": "tool-01",
+                "key": "API_KEY",
+                "value": "your-api-key-value"
+            }
+        }
+    )
 
 
 class ToolEnvironmentVariableResponse(ToolEnvironmentVariableBase, CommonModelConfig):
@@ -276,6 +406,16 @@ class ToolEnvironmentVariableResponse(ToolEnvironmentVariableBase, CommonModelCo
     creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the environment variable was created")
     lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this environment variable")
     lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the environment variable was last updated")
+
+
+class ToolEnvironmentVariableBulkResponse(BaseModel):
+    success: List[ToolEnvironmentVariableResponse] = Field(..., description="Successfully created environment variables")
+    errors: List[Dict[str, str]] = Field(..., description="Errors encountered during creation")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 # Lookup Type Schemas
@@ -291,10 +431,31 @@ class LookupTypeBase(BaseModel):
 
 class LookupTypeCreate(LookupTypeBase):
     pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "typeCode": "PROVIDER_TYPE_CD",
+                "description": "LLM Provider Type"
+            }
+        }
+    )
 
 
 class LookupTypeUpdate(BaseModel):
     description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type category")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "description": "Updated LLM Provider Type description"
+            }
+        }
+    )
 
 
 class LookupTypeResponse(LookupTypeBase, CommonModelConfig):
@@ -329,6 +490,20 @@ class LookupDetailBase(BaseModel):
 
 class LookupDetailCreate(LookupDetailBase):
     typeCode: str = Field(..., alias="lkd_lkt_type", description="Reference to the lookup type this detail belongs to")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "typeCode": "PROVIDER_TYPE_CD",
+                "code": "OPENAI",
+                "description": "OpenAI LLM Provider",
+                "subCode": None,
+                "sortOrder": 1
+            }
+        }
+    )
 
 
 class LookupDetailUpdate(BaseModel):
@@ -338,7 +513,14 @@ class LookupDetailUpdate(BaseModel):
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "description": "Updated OpenAI LLM Provider description",
+                "subCode": "GPT",
+                "sortOrder": 2
+            }
+        }
     )
 
 

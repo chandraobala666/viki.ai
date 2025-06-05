@@ -4,6 +4,7 @@ Knowledge Base router for VIKI API
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
 
 from ..model.knowledge_base import KnowledgeBaseDetail, KnowledgeBaseDocument
 from ..model.db_session import get_db
@@ -53,19 +54,12 @@ def create_knowledge_base(knowledge_base: KnowledgeBaseCreate, db: Session = Dep
     """
     Create a new knowledge base
     """
-    db_knowledge_base = db.query(KnowledgeBaseDetail).filter(
-        KnowledgeBaseDetail.knb_id == knowledge_base.id
-    ).first()
-    
-    if db_knowledge_base:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Knowledge Base with ID {knowledge_base.id} already exists"
-        )
+    # Generate unique knowledge base ID
+    kb_id = str(uuid.uuid4())
     
     # Create new knowledge base with mapped field names
     db_knowledge_base = KnowledgeBaseDetail(
-        knb_id=knowledge_base.id,
+        knb_id=kb_id,
         knb_name=knowledge_base.name,
         knb_description=knowledge_base.description
     )

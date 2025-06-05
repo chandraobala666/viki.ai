@@ -4,6 +4,7 @@ Tools router for VIKI API
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict
+import uuid
 
 from ..model.tools import Tool, ToolEnvironmentVariable
 from ..model.db_session import get_db
@@ -13,7 +14,8 @@ from .schemas import (
     ToolResponse,
     ToolEnvironmentVariableCreate,
     ToolEnvironmentVariableResponse,
-    ToolEnvironmentVariableBase
+    ToolEnvironmentVariableBase,
+    ToolEnvironmentVariableBulkResponse
 )
 from .response_utils import serialize_response, serialize_response_list
 
@@ -54,17 +56,12 @@ def create_tool(tool: ToolCreate, db: Session = Depends(get_db)):
     """
     Create a new tool
     """
-    db_tool = db.query(Tool).filter(Tool.tol_id == tool.id).first()
-    
-    if db_tool:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Tool with ID {tool.id} already exists"
-        )
+    # Generate unique tool ID
+    tool_id = str(uuid.uuid4())
     
     # Create new tool with mapped field names
     db_tool = Tool(
-        tol_id=tool.id,
+        tol_id=tool_id,
         tol_name=tool.name,
         tol_description=tool.description,
         tol_mcp_command=tool.mcpCommand
@@ -188,6 +185,67 @@ def add_environment_variable_to_tool(tool_id: str, env_var: ToolEnvironmentVaria
     db.refresh(db_env_var)
     env_var_response = ToolEnvironmentVariableResponse.model_validate(db_env_var, from_attributes=True)
     return serialize_response(env_var_response)
+
+
+@router.post("/{tool_id}/env-variables/bulk", status_code=status.HTTP_201_CREATED)
+def add_environment_variables_bulk_to_tool(tool_id: str, env_vars: List[ToolEnvironmentVariableBase], db: Session = Depends(get_db)):
+    """
+    Add multiple environment variables to a tool
+    """
+    # First check if the tool exists
+    tool = db.query(Tool).filter(Tool.tol_id == tool_id).first()
+    
+    if tool is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tool with ID {tool_id} not found"
+        )
+    
+    success_responses = []
+    error_responses = []
+    
+    for env_var in env_vars:
+        try:
+            # Check if the environment variable already exists
+            existing_env_var = db.query(ToolEnvironmentVariable).filter(
+                ToolEnvironmentVariable.tev_tol_id == tool_id,
+                ToolEnvironmentVariable.tev_key == env_var.key
+            ).first()
+            
+            if existing_env_var:
+                error_responses.append({
+                    "key": env_var.key,
+                    "error": f"Environment variable '{env_var.key}' already exists for Tool {tool_id}"
+                })
+                continue
+            
+            # Create the environment variable
+            db_env_var = ToolEnvironmentVariable(
+                tev_tol_id=tool_id,
+                tev_key=env_var.key,
+                tev_value=env_var.value
+            )
+            
+            db.add(db_env_var)
+            db.commit()
+            db.refresh(db_env_var)
+            
+            env_var_response = ToolEnvironmentVariableResponse.model_validate(db_env_var, from_attributes=True)
+            success_responses.append(env_var_response)
+            
+        except Exception as e:
+            db.rollback()
+            error_responses.append({
+                "key": env_var.key,
+                "error": f"Failed to create environment variable: {str(e)}"
+            })
+    
+    bulk_response = ToolEnvironmentVariableBulkResponse(
+        success=success_responses,
+        errors=error_responses
+    )
+    
+    return serialize_response(bulk_response)
 
 
 @router.put("/{tool_id}/env-variables/{env_key}")
