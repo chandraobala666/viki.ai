@@ -3,6 +3,7 @@ import subprocess
 import sys
 import uvicorn
 from fastapi import FastAPI, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
 
 from .lib.util.viki_logger import setup_logging
 from .lib.cmd_line.cli import load_environment_variables
@@ -87,6 +88,15 @@ def main():
             openapi_url=f"/api/{version}/openapi.json",
             swagger_ui_oauth2_redirect_url=f"/api/{version}/oauth2-redirect",
             swagger_ui_parameters={"defaultModelsExpandDepth": -1}
+        )
+        
+        # Add CORS middleware to allow cross-origin requests
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],  # Allow all origins
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "DELETE"],  # Specific methods
+            allow_headers=["Content-Type", "Authorization"],  # Specific headers
         )
         
         # Create main router with version prefix

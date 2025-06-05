@@ -1,3 +1,11 @@
+// Loading HTTP Client Libraries
+import { get, post, put, delete as deleteRequest, createApiClient } from './api-client.js';
+
+// Make HTTP clients available globally
+window.apiMethods = { get, post, put, delete: deleteRequest, createApiClient };
+
+console.log('✅ HTTP client libraries loaded successfully');
+
 // Loading HTML Components
 const componentFiles = [
     '../components/viki-header/viki-header.js',

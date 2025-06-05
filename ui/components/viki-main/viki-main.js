@@ -21,6 +21,20 @@ export class VikiMain extends BaseComponent {
             const { collapsed } = event.detail;
             // console.log(`Left splitter ${collapsed ? 'collapsed' : 'expanded'}`);
         });
+
+        // Listen for navigation change events
+        this.addEventListener('viki-nav-change', (event) => {
+            const { option } = event.detail;
+            this.handleNavigationChange(shadowRoot, option);
+        });
+    }
+
+    handleNavigationChange(shadowRoot, option) {
+        const canvas = shadowRoot.querySelector('viki-canvas');
+        if (canvas && canvas.shadowRoot) {
+            // Call loadView directly on the canvas component to avoid event loops
+            canvas.loadView(canvas.shadowRoot, option);
+        }
     }
 }
 

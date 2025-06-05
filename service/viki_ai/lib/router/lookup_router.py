@@ -169,6 +169,35 @@ def get_lookup_details(
     return serialize_response_list(lookup_detail_responses)
 
 
+@router.get("/details/{type_code}")
+def get_lookup_details_by_type(type_code: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """
+    Get all lookup details for a specific lookup type
+    
+    Returns a list of all lookup detail values for the specified lookup type.
+    This endpoint allows you to retrieve all reference data values within a specific category.
+    
+    - **type_code**: The unique identifier code of the lookup type to retrieve details for
+    - **skip**: Number of records to skip for pagination
+    - **limit**: Maximum number of records to return
+    """
+    # First verify that the lookup type exists
+    lookup_type = db.query(LookupType).filter(LookupType.lkt_type == type_code).first()
+    if lookup_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Lookup Type with code {type_code} not found"
+        )
+    
+    # Get all lookup details for this type
+    lookup_details = db.query(LookupDetail).filter(
+        LookupDetail.lkd_lkt_type == type_code
+    ).offset(skip).limit(limit).all()
+    
+    lookup_detail_responses = [LookupDetailResponse.model_validate(lookup_detail, from_attributes=True) for lookup_detail in lookup_details]
+    return serialize_response_list(lookup_detail_responses)
+
+
 @router.get("/details/{type_code}/{detail_code}")
 def get_lookup_detail(type_code: str, detail_code: str, db: Session = Depends(get_db)):
     """
