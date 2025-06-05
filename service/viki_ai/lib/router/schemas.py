@@ -530,3 +530,62 @@ class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
     creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup detail was created")
     lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup detail")
     lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup detail was last updated")
+
+
+# File Store Schemas
+class FileStoreBase(BaseModel):
+    sourceTypeCode: str = Field(..., alias="fls_source_type_cd", description="Source type code identifying the origin of the file")
+    sourceId: str = Field(..., alias="fls_source_id", description="Source identifier linking to the originating entity")
+    fileName: str = Field(..., alias="fls_file_name", description="Name of the stored file")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class FileStoreCreate(FileStoreBase):
+    fileContent: bytes = Field(..., alias="fls_file_content", description="Binary content of the file")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "sourceTypeCode": "DOC",
+                "sourceId": "kb-001",
+                "fileName": "sample_document.pdf",
+                "fileContent": "binary_file_content_here"
+            }
+        }
+    )
+
+
+class FileStoreUpdate(BaseModel):
+    sourceTypeCode: Optional[str] = Field(None, alias="fls_source_type_cd", description="Source type code identifying the origin of the file")
+    sourceId: Optional[str] = Field(None, alias="fls_source_id", description="Source identifier linking to the originating entity")
+    fileName: Optional[str] = Field(None, alias="fls_file_name", description="Name of the stored file")
+    fileContent: Optional[bytes] = Field(None, alias="fls_file_content", description="Binary content of the file")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "fileName": "updated_document.pdf",
+                "sourceTypeCode": "DOC"
+            }
+        }
+    )
+
+
+class FileStoreResponse(FileStoreBase, CommonModelConfig):
+    id: str = Field(..., alias="fls_id", description="Unique identifier for the file store record")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this file store record")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the file store record was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this file store record")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the file store record was last updated")
+
+
+class FileStoreContentResponse(FileStoreResponse):
+    fileContent: bytes = Field(..., alias="fls_file_content", description="Binary content of the file")

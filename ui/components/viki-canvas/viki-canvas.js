@@ -95,6 +95,26 @@ class VikiCanvas extends BaseComponent {
                                 <label for="apiKey">API Key</label>
                                 <input type="password" id="apiKey" name="apiKey" placeholder="Enter your API key">
                             </div>
+
+                            <div class="form-section">
+                                <label class="section-label">Config Files (optional)</label>
+                                <div class="file-upload-container">
+                                    <div class="upload-area" id="authConfigUpload">
+                                        <div class="upload-icon">🔐</div>
+                                        <div class="upload-text">
+                                            <span id="authConfigText">No config files uploaded</span>
+                                            <br>
+                                            <span class="upload-hint">Click 'Upload Files' to add any file type</span>
+                                        </div>
+                                        <button type="button" class="btn-upload" id="uploadAuthConfigBtn">
+                                            📤 Upload Files
+                                        </button>
+                                    </div>
+                                    <input type="file" id="authConfigFileInput" multiple style="display: none;">
+                                    <div class="uploaded-files" id="authConfigFiles"></div>
+                                </div>
+                            </div>
+                            
                             <div class="form-actions">
                                 <button type="button" class="btn-secondary" id="cancelBtn">Cancel</button>
                                 <button type="submit" class="btn-primary" id="saveBtn">Save</button>
@@ -146,6 +166,9 @@ class VikiCanvas extends BaseComponent {
                 this.closeLLMModal(contentArea);
             }
         });
+
+        // File upload event listeners
+        this.setupFileUploadListeners(contentArea);
     }
 
     async loadLLMs(contentArea) {
@@ -340,6 +363,15 @@ class VikiCanvas extends BaseComponent {
         const modal = contentArea.querySelector('#llmModal');
         const form = contentArea.querySelector('#llmForm');
         const title = contentArea.querySelector('#modalTitle');
+        const authConfigText = contentArea.querySelector('#authConfigText');
+        const authConfigFiles = contentArea.querySelector('#authConfigFiles');
+
+        // Reset file sections
+        if (authConfigText) authConfigText.textContent = 'No config files uploaded';
+        if (authConfigFiles) authConfigFiles.innerHTML = '';
+
+        // Clear temp files
+        this.tempFiles = {};
 
         // Load providers first to ensure the dropdown is populated
         await this.loadProviders(contentArea);
@@ -357,6 +389,9 @@ class VikiCanvas extends BaseComponent {
             if (endpointInput) endpointInput.value = llm.endpointUrl || '';
             if (apiKeyInput) apiKeyInput.value = llm.apiKey || '';
             form.dataset.llmId = llm.id;
+
+            // Load existing files
+            await this.loadLLMFiles(llm.id, contentArea);
         } else {
             // Add mode
             title.textContent = 'Add LLM Configuration';
@@ -377,6 +412,12 @@ class VikiCanvas extends BaseComponent {
         const formData = new FormData(form);
         const isEdit = form.dataset.llmId;
 
+        // Save button to show loading state
+        const saveBtn = form.querySelector('#saveBtn');
+        const originalSaveBtnText = saveBtn.textContent;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+
         const llmData = {
             providerTypeCode: formData.get('provider'),
             modelCode: formData.get('model'),
@@ -387,18 +428,28 @@ class VikiCanvas extends BaseComponent {
         try {
             let response;
             const baseUrl = 'http://localhost:8080';
+            let llmId;
             
             if (isEdit) {
-                response = await put(`/api/0.1.0/llm/${form.dataset.llmId}`, llmData, {
+                llmId = form.dataset.llmId;
+                response = await put(`/api/0.1.0/llm/${llmId}`, llmData, {
                     baseUrl: baseUrl
                 });
             } else {
                 response = await post('/api/0.1.0/llm/', llmData, {
                     baseUrl: baseUrl
                 });
+                if (response.status >= 200 && response.status < 300) {
+                    llmId = response.data.id;
+                }
             }
 
-            if (response.status >= 200 && response.status < 300) {
+            if (response.status >= 200 && response.status < 300 && llmId) {
+                // Upload auth config files if any
+                if (this.tempFiles?.auth?.length > 0) {
+                    await this.uploadFilesToLLM(llmId, 'auth');
+                }
+                
                 this.closeLLMModal(contentArea);
                 await this.loadLLMs(contentArea);
             } else {
@@ -407,6 +458,10 @@ class VikiCanvas extends BaseComponent {
         } catch (error) {
             console.error('Error saving LLM:', error);
             alert('Failed to save LLM configuration');
+        } finally {
+            // Reset button state
+            saveBtn.textContent = originalSaveBtnText;
+            saveBtn.disabled = false;
         }
     }
 
@@ -434,6 +489,371 @@ class VikiCanvas extends BaseComponent {
         } catch (error) {
             console.error('Error deleting LLM:', error);
             alert('Failed to delete LLM configuration');
+        }
+    }
+
+    setupFileUploadListeners(contentArea) {
+        // Auth Config file upload
+        const authConfigBtn = contentArea.querySelector('#uploadAuthConfigBtn');
+        const authConfigInput = contentArea.querySelector('#authConfigFileInput');
+        const authConfigArea = contentArea.querySelector('#authConfigUpload');
+        
+        authConfigBtn?.addEventListener('click', () => {
+            authConfigInput.click();
+        });
+
+        authConfigInput?.addEventListener('change', (e) => {
+            this.handleFileSelection(e.target.files, 'auth', contentArea);
+        });
+
+        // Drag and drop for auth config
+        authConfigArea?.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            authConfigArea.classList.add('drag-over');
+        });
+
+        authConfigArea?.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            authConfigArea.classList.remove('drag-over');
+        });
+
+        authConfigArea?.addEventListener('drop', (e) => {
+            e.preventDefault();
+            authConfigArea.classList.remove('drag-over');
+            this.handleFileSelection(e.dataTransfer.files, 'auth', contentArea);
+        });
+    }
+
+    handleFileSelection(files, type, contentArea) {
+        if (!files || files.length === 0) return;
+
+        const fileArray = Array.from(files);
+        
+        // Store files temporarily (will be uploaded when form is saved)
+        if (!this.tempFiles) {
+            this.tempFiles = {};
+        }
+        
+        if (!this.tempFiles[type]) {
+            this.tempFiles[type] = [];
+        }
+
+        fileArray.forEach(file => {
+            // Add unique ID to each file for management
+            const fileWithId = {
+                id: Date.now() + Math.random(),
+                file: file,
+                name: file.name,
+                size: file.size,
+                type: file.type
+            };
+            this.tempFiles[type].push(fileWithId);
+        });
+
+        this.updateFileDisplay(type, contentArea);
+    }
+
+    updateFileDisplay(type, contentArea) {
+        const files = this.tempFiles?.[type] || [];
+        
+        const textElement = contentArea.querySelector('#authConfigText');
+        const filesContainer = contentArea.querySelector('#authConfigFiles');
+        
+        if (files.length === 0) {
+            textElement.textContent = 'No config files uploaded';
+            filesContainer.innerHTML = '';
+            return;
+        }
+
+        textElement.textContent = `${files.length} file${files.length > 1 ? 's' : ''} selected`;
+        
+        filesContainer.innerHTML = files.map(fileInfo => `
+            <div class="file-item" data-file-id="${fileInfo.id}">
+                <div class="file-info">
+                    <span class="file-icon">${this.getFileIcon(fileInfo.name)}</span>
+                    <div>
+                        <div class="file-name">${fileInfo.name}</div>
+                        <div class="file-size">${this.formatFileSize(fileInfo.size)}</div>
+                    </div>
+                </div>
+                <div class="file-actions">
+                    <button type="button" class="btn-remove" onclick="this.closest('viki-canvas').removeFile('${type}', '${fileInfo.id}')">×</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    removeFile(type, fileId) {
+        if (!this.tempFiles?.[type]) return;
+        
+        this.tempFiles[type] = this.tempFiles[type].filter(f => f.id !== fileId);
+        
+        const contentArea = this.shadowRoot.querySelector('.canvas-content');
+        this.updateFileDisplay(type, contentArea);
+    }
+
+    getFileIcon(filename) {
+        const extension = filename.split('.').pop().toLowerCase();
+        const iconMap = {
+            // Config files
+            'json': '📄',
+            'yaml': '📄',
+            'yml': '📄',
+            'conf': '⚙️',
+            'config': '⚙️',
+            'ini': '⚙️',
+            'cfg': '⚙️',
+            'properties': '⚙️',
+            'toml': '⚙️',
+            'xml': '📄',
+            
+            // Text files
+            'txt': '📝',
+            'md': '📝',
+            'readme': '📝',
+            'log': '📝',
+            
+            // Security/Certificate files
+            'pem': '🔐',
+            'key': '🔐',
+            'crt': '🔐',
+            'cert': '🔐',
+            'p12': '🔐',
+            'pfx': '🔐',
+            'der': '🔐',
+            'jks': '🔐',
+            
+            // Code files
+            'js': '💻',
+            'ts': '💻',
+            'py': '💻',
+            'java': '💻',
+            'cpp': '💻',
+            'c': '💻',
+            'go': '💻',
+            'rs': '💻',
+            'php': '💻',
+            'rb': '💻',
+            'sh': '💻',
+            'sql': '💻',
+            
+            // Documents
+            'pdf': '📕',
+            'doc': '📘',
+            'docx': '📘',
+            'xls': '📗',
+            'xlsx': '📗',
+            'ppt': '📙',
+            'pptx': '📙',
+            
+            // Images
+            'jpg': '🖼️',
+            'jpeg': '🖼️',
+            'png': '🖼️',
+            'gif': '🖼️',
+            'svg': '🖼️',
+            'bmp': '🖼️',
+            'webp': '🖼️',
+            
+            // Archives
+            'zip': '📦',
+            'tar': '📦',
+            'gz': '📦',
+            'rar': '📦',
+            '7z': '📦',
+            
+            // Data files
+            'csv': '📊',
+            'db': '🗄️',
+            'sqlite': '🗄️',
+            'sql': '🗄️'
+        };
+        return iconMap[extension] || '📄';
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async uploadFilesToLLM(llmId, type) {
+        const files = this.tempFiles?.[type] || [];
+        const uploadedFiles = [];
+        const contentArea = this.shadowRoot.querySelector('.canvas-content');
+        const filesContainer = contentArea.querySelector('#authConfigFiles');
+        
+        // Add progress indicators
+        for (const fileInfo of files) {
+            const fileElement = filesContainer.querySelector(`[data-file-id="${fileInfo.id}"]`);
+            if (fileElement) {
+                fileElement.classList.add('uploading');
+                const actionsElement = fileElement.querySelector('.file-actions');
+                const oldContent = actionsElement.innerHTML;
+                actionsElement.innerHTML = '<span class="upload-status">Uploading...</span>';
+                
+                // Add progress bar
+                const progressElement = document.createElement('div');
+                progressElement.className = 'file-upload-progress';
+                progressElement.innerHTML = '<div class="file-upload-progress-bar" style="width: 0%"></div>';
+                fileElement.appendChild(progressElement);
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('file', fileInfo.file);
+
+                    const response = await fetch(`http://localhost:8080/api/0.1.0/llm/${llmId}/files`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        uploadedFiles.push(result);
+                        fileElement.classList.remove('uploading');
+                        fileElement.classList.add('success');
+                        progressElement.querySelector('.file-upload-progress-bar').style.width = '100%';
+                        actionsElement.innerHTML = '<span class="upload-status">Uploaded ✓</span>';
+                    } else {
+                        console.error(`Failed to upload file ${fileInfo.name}`);
+                        fileElement.classList.remove('uploading');
+                        fileElement.classList.add('error');
+                        actionsElement.innerHTML = '<span class="upload-status">Failed ✗</span>';
+                    }
+                } catch (error) {
+                    console.error(`Error uploading file ${fileInfo.name}:`, error);
+                    fileElement.classList.remove('uploading');
+                    fileElement.classList.add('error');
+                    actionsElement.innerHTML = '<span class="upload-status">Error ✗</span>';
+                }
+                
+                // Simulate a slight delay for UI feedback
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        return uploadedFiles;
+    }
+
+    async loadLLMFiles(llmId, contentArea) {
+        try {
+            const response = await get(`/api/0.1.0/llm/${llmId}/files`, {
+                baseUrl: 'http://localhost:8080'
+            });
+
+            if (response.status >= 200 && response.status < 300) {
+                const files = response.data?.data || [];
+                this.displayExistingFiles(files, contentArea);
+            }
+        } catch (error) {
+            console.error('Error loading LLM files:', error);
+        }
+    }
+
+    displayExistingFiles(files, contentArea) {
+        const authConfigFiles = contentArea.querySelector('#authConfigFiles');
+        const authConfigText = contentArea.querySelector('#authConfigText');
+
+        if (!files.length) {
+            return;
+        }
+
+        // Create array of file HTML items
+        const fileItems = files.map(file => `
+            <div class="file-item" data-file-id="${file.id}">
+                <div class="file-info">
+                    <span class="file-icon">${this.getFileIcon(file.fileName)}</span>
+                    <div>
+                        <div class="file-name">${file.fileName}</div>
+                        <div class="file-size">Uploaded</div>
+                    </div>
+                </div>
+                <div class="file-actions">
+                    <button type="button" class="btn-download" onclick="this.closest('viki-canvas').downloadFile('${file.id}')">↓</button>
+                    <button type="button" class="btn-remove" onclick="this.closest('viki-canvas').deleteFile('${file.id}')">×</button>
+                </div>
+            </div>
+        `);
+
+        // For authentication files
+        const authFileExtensions = ['pem', 'key', 'crt', 'p12', 'pfx', 'json', 'yaml', 'yml', 'conf', 'config', 'txt'];
+        const authFiles = fileItems; // Display all files in auth section
+        
+        // Update display
+        if (authFiles.length > 0) {
+            authConfigText.textContent = `${authFiles.length} file${authFiles.length > 1 ? 's' : ''} uploaded`;
+            authConfigFiles.innerHTML = authFiles.join('');
+        }
+    }
+
+    async downloadFile(fileId) {
+        // This would need the LLM ID - you might want to store it in the form or component
+        const form = this.shadowRoot.querySelector('#llmForm');
+        const llmId = form?.dataset.llmId;
+        
+        if (llmId) {
+            window.open(`http://localhost:8080/api/0.1.0/llm/${llmId}/files/${fileId}/download`, '_blank');
+        }
+    }
+
+    async deleteFile(fileId) {
+        if (!confirm('Are you sure you want to delete this file?')) {
+            return;
+        }
+
+        const form = this.shadowRoot.querySelector('#llmForm');
+        const llmId = form?.dataset.llmId;
+        const contentArea = this.shadowRoot.querySelector('.canvas-content');
+        
+        // Find the file element
+        const fileElement = contentArea.querySelector(`[data-file-id="${fileId}"]`);
+        
+        if (llmId && fileElement) {
+            // Show deleting state
+            const actionsElement = fileElement.querySelector('.file-actions');
+            const oldContent = actionsElement.innerHTML;
+            actionsElement.innerHTML = '<span class="upload-status">Deleting...</span>';
+            fileElement.classList.add('uploading'); // Reuse the uploading animation
+            
+            try {
+                const response = await deleteRequest(`/api/0.1.0/llm/${llmId}/files/${fileId}`, {
+                    baseUrl: 'http://localhost:8080'
+                });
+
+                if (response.status >= 200 && response.status < 300) {
+                    // Success - fade out and remove the file element
+                    fileElement.style.opacity = '0';
+                    fileElement.style.transition = 'opacity 0.5s';
+                    setTimeout(() => {
+                        fileElement.remove();
+                        
+                        // Update the count in the text element
+                        const textElement = contentArea.querySelector('#authConfigText');
+                        const container = contentArea.querySelector('#authConfigFiles');
+                        
+                        const remainingFiles = container.querySelectorAll('.file-item').length;
+                        if (remainingFiles === 0) {
+                            textElement.textContent = 'No config files uploaded';
+                        } else {
+                            textElement.textContent = `${remainingFiles} file${remainingFiles > 1 ? 's' : ''} uploaded`;
+                        }
+                    }, 500);
+                } else {
+                    // Error - restore the file element
+                    fileElement.classList.remove('uploading');
+                    fileElement.classList.add('error');
+                    actionsElement.innerHTML = oldContent;
+                    alert('Failed to delete file');
+                }
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                fileElement.classList.remove('uploading');
+                fileElement.classList.add('error');
+                actionsElement.innerHTML = oldContent;
+                alert('Failed to delete file: ' + error.message);
+            }
         }
     }
 
