@@ -11,7 +11,11 @@ const componentFiles = [
     '../components/viki-header/viki-header.js',
     '../components/viki-footer/viki-footer.js',
     '../components/viki-main/viki-main.js',
-    '../components/viki-canvas/viki-canvas.js',
+    '../components/viki-llm-canvas/viki-llm-canvas.js',
+    '../components/viki-tools-canvas/viki-tools-canvas.js',
+    '../components/viki-rag-canvas/viki-rag-canvas.js',
+    '../components/viki-agents-canvas/viki-agents-canvas.js',
+    '../components/viki-chat-canvas/viki-chat-canvas.js',
     '../components/viki-card/viki-card.js',
     '../components/viki-left-splitter/viki-left-splitter.js'
 ];

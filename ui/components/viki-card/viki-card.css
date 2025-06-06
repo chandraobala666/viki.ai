@@ -1,0 +1,12 @@
+.viki-card {
+    border: 1px solid #e1e5e9;
+    border-radius: 8px;
+    padding: 16px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.2s ease;
+}
+
+.viki-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}

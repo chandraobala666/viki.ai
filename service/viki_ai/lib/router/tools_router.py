@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict
 import uuid
+import logging
 
 from ..model.tools import Tool, ToolEnvironmentVariable
 from ..model.db_session import get_db
@@ -111,17 +112,49 @@ def delete_tool(tool_id: str, db: Session = Depends(get_db)):
     """
     Delete a tool
     """
-    db_tool = db.query(Tool).filter(Tool.tol_id == tool_id).first()
+    logger = logging.getLogger(__name__)
     
-    if db_tool is None:
+    try:
+        from ..model.agent import AgentTool
+        
+        logger.info(f"Attempting to delete tool with ID: {tool_id}")
+        
+        db_tool = db.query(Tool).filter(Tool.tol_id == tool_id).first()
+        
+        if db_tool is None:
+            logger.warning(f"Tool with ID {tool_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tool with ID {tool_id} not found"
+            )
+        
+        # Delete related records first to avoid foreign key constraint violations
+        logger.debug(f"Deleting agent-tool relationships for tool {tool_id}")
+        agent_tools_deleted = db.query(AgentTool).filter(AgentTool.ato_tol_id == tool_id).delete()
+        logger.debug(f"Deleted {agent_tools_deleted} agent-tool relationships")
+        
+        logger.debug(f"Deleting environment variables for tool {tool_id}")
+        env_vars_deleted = db.query(ToolEnvironmentVariable).filter(ToolEnvironmentVariable.tev_tol_id == tool_id).delete()
+        logger.debug(f"Deleted {env_vars_deleted} environment variables")
+        
+        # Now delete the tool
+        logger.debug(f"Deleting tool {tool_id}")
+        db.delete(db_tool)
+        db.commit()
+        
+        logger.info(f"Successfully deleted tool {tool_id}")
+        return None
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting tool {tool_id}: {str(e)}")
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tool with ID {tool_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error while deleting tool: {str(e)}"
         )
-    
-    db.delete(db_tool)
-    db.commit()
-    return None
 
 
 # Tool Environment Variable Endpoints

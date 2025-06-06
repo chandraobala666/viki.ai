@@ -95,8 +95,8 @@ def main():
             CORSMiddleware,
             allow_origins=["*"],  # Allow all origins
             allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE"],  # Specific methods
-            allow_headers=["Content-Type", "Authorization"],  # Specific headers
+            allow_methods=["*"],  # Allow all methods
+            allow_headers=["*"],  # Allow all headers
         )
         
         # Create main router with version prefix

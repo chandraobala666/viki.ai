@@ -61,6 +61,7 @@ class VikiLeftSplitter extends BaseComponent {
     }
 
     dispatchNavChangeEvent(option) {
+        console.log('🚀 VikiLeftSplitter: Dispatching nav change event for:', option);
         this.dispatchEvent(new CustomEvent('viki-nav-change', {
             bubbles: true,
             composed: true,
