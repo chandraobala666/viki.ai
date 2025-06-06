@@ -3,16 +3,29 @@ export class BaseComponent extends HTMLElement {
         super();
         this.templateName = templateName;
         this.shadowMode = shadowMode;
+        this._initializationPromise = null;
     }
 
     connectedCallback() {
-        return new Promise((resolve, reject) => {
+        // Prevent multiple initialization attempts
+        if (this._initializationPromise) {
+            return this._initializationPromise;
+        }
+
+        // If shadow root already exists, return it immediately
+        if (this._shadowRoot) {
+            return Promise.resolve(this._shadowRoot);
+        }
+
+        this._initializationPromise = new Promise((resolve, reject) => {
             fetch(`./ui/components/${this.templateName.toLowerCase()}/${this.templateName.toLowerCase()}.html`)
                 .then(response => response.text())
                 .then(html => {
 
-                    // Create shadow DOM
-                    this._shadowRoot = this.attachShadow({ mode: this.shadowMode });
+                    // Create shadow DOM only if it doesn't exist
+                    if (!this._shadowRoot) {
+                        this._shadowRoot = this.attachShadow({ mode: this.shadowMode });
+                    }
 
                     //Load HTML
                     const template = document.createElement('template');
@@ -35,6 +48,8 @@ export class BaseComponent extends HTMLElement {
                     reject(error);
                 });
         });
+
+        return this._initializationPromise;
     }
 
     // Getter to access shadow root

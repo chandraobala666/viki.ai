@@ -1,6 +1,4 @@
 import { BaseComponent } from '../base/base.js';
-import '../viki-card/viki-card.js';
-import { get, post, put, delete as deleteRequest } from '../../script/api-client.js';
 
 class VikiToolsCanvas extends BaseComponent {
     constructor() {
@@ -139,8 +137,8 @@ class VikiToolsCanvas extends BaseComponent {
         try {
             console.log('🚀 Fetching Tools from API...');
             
-            // Use api-client to fetch Tools from the correct endpoint
-            const response = await get('/api/0.1.0/tools/', {
+            // Use global API methods to fetch Tools from the correct endpoint
+            const response = await window.apiMethods.get('/api/0.1.0/tools/', {
                 baseUrl: 'http://localhost:8080'
             });
             
@@ -307,11 +305,11 @@ class VikiToolsCanvas extends BaseComponent {
             
             if (isEdit) {
                 toolId = form.dataset.toolId;
-                response = await put(`/api/0.1.0/tools/${toolId}`, toolData, {
+                response = await window.apiMethods.put(`/api/0.1.0/tools/${toolId}`, toolData, {
                     baseUrl: baseUrl
                 });
             } else {
-                response = await post('/api/0.1.0/tools/', toolData, {
+                response = await window.apiMethods.post('/api/0.1.0/tools/', toolData, {
                     baseUrl: baseUrl
                 });
                 if (response.status >= 200 && response.status < 300) {
@@ -349,7 +347,7 @@ class VikiToolsCanvas extends BaseComponent {
         }
 
         try {
-            const response = await deleteRequest(`/api/0.1.0/tools/${toolId}`, {
+            const response = await window.apiMethods.delete(`/api/0.1.0/tools/${toolId}`, {
                 baseUrl: 'http://localhost:8080'
             });
 
@@ -405,7 +403,7 @@ class VikiToolsCanvas extends BaseComponent {
 
     async loadToolEnvironmentVariables(toolId, contentArea) {
         try {
-            const response = await get(`/api/0.1.0/tools/${toolId}/env-variables`, {
+            const response = await window.apiMethods.get(`/api/0.1.0/tools/${toolId}/env-variables`, {
                 baseUrl: 'http://localhost:8080'
             });
 
@@ -459,7 +457,7 @@ class VikiToolsCanvas extends BaseComponent {
 
         if (envVariables.length > 0) {
             try {
-                const response = await post(`/api/0.1.0/tools/${toolId}/env-variables`, envVariables, {
+                const response = await window.apiMethods.post(`/api/0.1.0/tools/${toolId}/env-variables`, envVariables, {
                     baseUrl: 'http://localhost:8080'
                 });
 

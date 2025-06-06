@@ -1,6 +1,4 @@
 import { BaseComponent } from '../base/base.js';
-import '../viki-card/viki-card.js';
-import { get, post, put, delete as deleteRequest } from '../../script/api-client.js';
 
 class VikiLLMCanvas extends BaseComponent {
     constructor() {
@@ -152,8 +150,8 @@ class VikiLLMCanvas extends BaseComponent {
         try {
             console.log('🚀 Fetching LLMs from API...');
             
-            // Use api-client to fetch LLMs from the correct endpoint
-            const response = await get('/api/0.1.0/llm/', {
+            // Use global API methods to fetch LLMs from the correct endpoint
+            const response = await window.apiMethods.get('/api/0.1.0/llm/', {
                 baseUrl: 'http://localhost:8080'
             });
             
@@ -198,8 +196,8 @@ class VikiLLMCanvas extends BaseComponent {
         try {
             console.log('🚀 Fetching providers from API...');
             
-            // Use api-client to fetch providers from the lookup endpoint
-            const response = await get('/api/0.1.0/lookups/details/PROVIDER_TYPE_CD', {
+            // Use global API methods to fetch providers from the lookup endpoint
+            const response = await window.apiMethods.get('/api/0.1.0/lookups/details/PROVIDER_TYPE_CD', {
                 baseUrl: 'http://localhost:8080'
             });
             
@@ -398,11 +396,11 @@ class VikiLLMCanvas extends BaseComponent {
             
             if (isEdit) {
                 llmId = form.dataset.llmId;
-                response = await put(`/api/0.1.0/llm/${llmId}`, llmData, {
+                response = await window.apiMethods.put(`/api/0.1.0/llm/${llmId}`, llmData, {
                     baseUrl: baseUrl
                 });
             } else {
-                response = await post('/api/0.1.0/llm/', llmData, {
+                response = await window.apiMethods.post('/api/0.1.0/llm/', llmData, {
                     baseUrl: baseUrl
                 });
                 if (response.status >= 200 && response.status < 300) {
@@ -411,6 +409,30 @@ class VikiLLMCanvas extends BaseComponent {
             }
 
             if (response.status >= 200 && response.status < 300 && llmId) {
+                // If editing and new files are uploaded, delete existing files first
+                if (isEdit && this.tempFiles?.auth?.length > 0) {
+                    try {
+                        // Get existing files for this LLM
+                        const existingFilesResponse = await window.apiMethods.get(`/api/0.1.0/llm/${llmId}/files`, {
+                            baseUrl: baseUrl
+                        });
+                        
+                        if (existingFilesResponse.status >= 200 && existingFilesResponse.status < 300) {
+                            const existingFiles = existingFilesResponse.data || [];
+                            
+                            // Delete each existing file
+                            for (const file of existingFiles) {
+                                await window.apiMethods.delete(`/api/0.1.0/llm/${llmId}/files/${file.id}`, {
+                                    baseUrl: baseUrl
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Error deleting existing files:', error);
+                        // Continue with upload even if deletion fails
+                    }
+                }
+                
                 // Upload auth config files if any
                 if (this.tempFiles?.auth?.length > 0) {
                     await this.uploadFilesToLLM(llmId, 'auth');
@@ -442,7 +464,7 @@ class VikiLLMCanvas extends BaseComponent {
         }
 
         try {
-            const response = await deleteRequest(`/api/0.1.0/llm/${llmId}`, {
+            const response = await window.apiMethods.delete(`/api/0.1.0/llm/${llmId}`, {
                 baseUrl: 'http://localhost:8080'
             });
 
@@ -597,9 +619,9 @@ class VikiLLMCanvas extends BaseComponent {
                     const formData = new FormData();
                     formData.append('file', fileInfo.file);
                     
-                    const uploadResponse = await post(`/api/0.1.0/llm/${llmId}/files`, formData, {
-                        baseUrl: 'http://localhost:8080',
-                        headers: {} // Let browser set content-type for FormData
+                    const uploadResponse = await window.apiMethods.post(`/api/0.1.0/llm/${llmId}/files`, formData, {
+                        baseUrl: 'http://localhost:8080'
+                        // Don't set headers - let the browser set Content-Type with boundary for FormData
                     });
                     
                     if (uploadResponse.status >= 200 && uploadResponse.status < 300) {
@@ -628,12 +650,13 @@ class VikiLLMCanvas extends BaseComponent {
 
     async loadLLMFiles(llmId, contentArea) {
         try {
-            const response = await get(`/api/0.1.0/llm/${llmId}/files`, {
+            const response = await window.apiMethods.get(`/api/0.1.0/llm/${llmId}/files`, {
                 baseUrl: 'http://localhost:8080'
             });
 
             if (response.status >= 200 && response.status < 300) {
-                const files = response.data?.data || [];
+                const files = response.data || [];
+                console.log('📁 Loaded LLM files:', files);
                 this.displayExistingFiles(files, contentArea);
             }
         } catch (error) {
@@ -644,6 +667,8 @@ class VikiLLMCanvas extends BaseComponent {
     displayExistingFiles(files, contentArea) {
         const filesContainer = contentArea.querySelector('#authConfigFiles');
         const textElement = contentArea.querySelector('#authConfigText');
+        
+        console.log('📂 Displaying existing files:', files);
         
         if (files.length === 0) {
             textElement.textContent = 'No config files uploaded';
@@ -656,10 +681,10 @@ class VikiLLMCanvas extends BaseComponent {
         filesContainer.innerHTML = files.map(file => `
             <div class="file-item" data-file-id="${file.id}">
                 <div class="file-info">
-                    <div class="file-icon">${this.getFileIcon(file.filename)}</div>
+                    <div class="file-icon">${this.getFileIcon(file.fileName)}</div>
                     <div class="file-details">
-                        <h4>${file.filename}</h4>
-                        <p>${this.formatFileSize(file.fileSize || 0)} • Uploaded ${new Date(file.createdDate).toLocaleDateString()}</p>
+                        <h4>${file.fileName}</h4>
+                        <p>File • Uploaded ${file.creationDt ? new Date(file.creationDt).toLocaleDateString() : 'Unknown date'}</p>
                     </div>
                 </div>
                 <div class="file-actions">
@@ -676,8 +701,16 @@ class VikiLLMCanvas extends BaseComponent {
 
     async downloadFile(fileId) {
         try {
-            // This would typically trigger a file download
-            const downloadUrl = `http://localhost:8080/api/0.1.0/files/${fileId}/download`;
+            const form = this.shadowRoot.querySelector('#llmForm');
+            const llmId = form.dataset.llmId;
+            
+            if (!llmId) {
+                alert('Cannot download file: LLM ID not found');
+                return;
+            }
+            
+            // Use LLM-specific download endpoint
+            const downloadUrl = `http://localhost:8080/api/0.1.0/llm/${llmId}/files/${fileId}/download`;
             window.open(downloadUrl, '_blank');
         } catch (error) {
             console.error('Error downloading file:', error);
@@ -691,17 +724,23 @@ class VikiLLMCanvas extends BaseComponent {
         }
 
         try {
-            const response = await deleteRequest(`/api/0.1.0/files/${fileId}`, {
+            const form = this.shadowRoot.querySelector('#llmForm');
+            const llmId = form.dataset.llmId;
+            
+            if (!llmId) {
+                alert('Cannot delete file: LLM ID not found');
+                return;
+            }
+            
+            // Use LLM-specific delete endpoint
+            const response = await window.apiMethods.delete(`/api/0.1.0/llm/${llmId}/files/${fileId}`, {
                 baseUrl: 'http://localhost:8080'
             });
 
             if (response.status >= 200 && response.status < 300) {
                 // Reload the current LLM files
-                const form = this.shadowRoot.querySelector('#llmForm');
-                if (form.dataset.llmId) {
-                    const contentArea = this.shadowRoot.querySelector('.canvas-content');
-                    await this.loadLLMFiles(form.dataset.llmId, contentArea);
-                }
+                const contentArea = this.shadowRoot.querySelector('.canvas-content');
+                await this.loadLLMFiles(llmId, contentArea);
             } else {
                 alert('Failed to delete file');
             }

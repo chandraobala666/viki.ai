@@ -130,6 +130,7 @@ def delete_llm_config(llm_id: str, db: Session = Depends(get_db)):
     Delete an LLM configuration
     
     Permanently removes an LLM configuration from the system.
+    Also deletes all associated files in the file store.
     
     - **llm_id**: The unique identifier of the LLM configuration to delete
     """
@@ -137,6 +138,16 @@ def delete_llm_config(llm_id: str, db: Session = Depends(get_db)):
     if db_llm_config is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"LLM configuration with ID {llm_id} not found")
     
+    # Delete all associated files first
+    associated_files = db.query(FileStore).filter(
+        FileStore.fls_source_type_cd == "LLM",
+        FileStore.fls_source_id == llm_id
+    ).all()
+    
+    for file in associated_files:
+        db.delete(file)
+    
+    # Delete the LLM configuration
     db.delete(db_llm_config)
     db.commit()
     return None

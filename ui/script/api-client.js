@@ -151,13 +151,24 @@ async function get(url, options = {}) {
 /**
  * Perform POST request
  * @param {string} url - Request URL
- * @param {Object} data - Request data (JSON)
+ * @param {Object|FormData} data - Request data (JSON object or FormData)
  * @param {Object} options - Request options
  * @returns {Promise<Object>} Response object with status and data
  */
 async function post(url, data, options = {}) {
     const fullUrl = (options.baseUrl || defaultConfig.baseUrl) + url;
-    const headers = { ...defaultConfig.headers, ...options.headers };
+    let headers = { ...defaultConfig.headers, ...options.headers };
+    let body;
+    
+    // Handle FormData differently from JSON data
+    if (data instanceof FormData) {
+        // For FormData, don't set Content-Type header (let browser set it with boundary)
+        delete headers['Content-Type'];
+        body = data;
+    } else {
+        // For JSON data, stringify it
+        body = JSON.stringify(data);
+    }
     
     logRequest('POST', fullUrl, data);
     
@@ -165,7 +176,7 @@ async function post(url, data, options = {}) {
         const response = await fetchWithTimeout(fullUrl, {
             method: 'POST',
             headers,
-            body: JSON.stringify(data),
+            body,
             ...options.fetchOptions
         }, options.timeout);
         

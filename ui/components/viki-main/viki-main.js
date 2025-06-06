@@ -1,24 +1,21 @@
 import { BaseComponent } from '../base/base.js';
-import '../viki-header/viki-header.js';
-import '../viki-left-splitter/viki-left-splitter.js';
-import '../viki-llm-canvas/viki-llm-canvas.js';
-import '../viki-tools-canvas/viki-tools-canvas.js';
-import '../viki-rag-canvas/viki-rag-canvas.js';
-import '../viki-agents-canvas/viki-agents-canvas.js';
-import '../viki-chat-canvas/viki-chat-canvas.js';
 
 export class VikiMain extends BaseComponent {
     constructor() {
         super('viki-main');
         this.currentView = 'llm'; // Default view
+        this.validViews = ['llm', 'tools', 'rag', 'agents', 'chat'];
     }
     
     async connectedCallback() {
         const shadowRoot = await super.connectedCallback();
         if (shadowRoot) {
             this.setupEventListeners(shadowRoot);
-            // Load default view
-            await this.loadView(shadowRoot, 'llm');
+            this.setupURLNavigation();
+            // Load view based on URL or default
+            const initialView = this.getViewFromURL() || 'llm';
+            await this.loadView(shadowRoot, initialView);
+            await this.syncLeftSplitterWithURL();
         }
     }
 
@@ -38,6 +35,7 @@ export class VikiMain extends BaseComponent {
 
     handleNavigationChange(shadowRoot, option) {
         console.log('🚀 VikiMain: Navigation change to:', option);
+        this.updateURL(option);
         this.loadView(shadowRoot, option);
     }
 
@@ -106,6 +104,51 @@ export class VikiMain extends BaseComponent {
             </div>
             <p>Select an option from the left panel to get started.</p>
         `;
+    }
+
+    // URL Navigation Methods
+    setupURLNavigation() {
+        // Listen for browser back/forward navigation
+        window.addEventListener('popstate', async (event) => {
+            const view = this.getViewFromURL() || 'llm';
+            if (view !== this.currentView) {
+                await this.loadView(this.shadowRoot, view);
+                await this.syncLeftSplitterWithURL();
+            }
+        });
+    }
+
+    getViewFromURL() {
+        // Check URL parameters (e.g., ?view=tools)
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramView = urlParams.get('view');
+        if (this.validViews.includes(paramView)) {
+            return paramView;
+        }
+
+        return null;
+    }
+
+    updateURL(view) {
+        // Update URL with query parameter without page reload
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentView = urlParams.get('view');
+        
+        // Only update if different to avoid unnecessary history entries
+        if (currentView !== view) {
+            urlParams.set('view', view);
+            const newURL = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
+            window.history.pushState({ view }, `VIKI - ${view.toUpperCase()}`, newURL);
+        }
+    }
+
+    async syncLeftSplitterWithURL() {
+        // Update the left splitter to reflect the current URL
+        const view = this.getViewFromURL() || 'llm';
+        const leftSplitter = this.shadowRoot.querySelector('viki-left-splitter');
+        if (leftSplitter && leftSplitter.setActiveOption) {
+            await leftSplitter.setActiveOption(view);
+        }
     }
 }
 
