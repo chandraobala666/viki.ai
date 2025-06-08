@@ -179,13 +179,19 @@ class VikiToolsCanvas extends BaseComponent {
             const card = this.createToolsCard(tool);
             container.appendChild(card);
         });
+        
+        // After all cards are rendered, load icons safely
+        setTimeout(() => {
+            const iconImages = container.querySelectorAll('img[data-tool-name]');
+            iconImages.forEach(img => this.loadToolIconSafely(img));
+        }, 0);
     }
 
     getToolIcon(toolName) {
         const basePath = './ui/assets/tools/';
         
         if (!toolName) {
-            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32" onerror="this.src='${basePath}default.svg'">`;
+            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32">`;
         }
         
         // Clean the tool name to create a valid filename
@@ -194,11 +200,34 @@ class VikiToolsCanvas extends BaseComponent {
             .trim();
         
         if (!cleanedToolName) {
-            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32" onerror="this.src='${basePath}default.svg'">`;
+            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32">`;
         }
         
-        // Try to load the specific tool icon, fallback to default.svg if not found
-        return `<img src="${basePath}${cleanedToolName}.svg" alt="${toolName}" width="32" height="32" onerror="this.src='${basePath}default.svg'">`;
+        // Create a unique ID for this icon to handle loading
+        const iconId = `tool-icon-${cleanedToolName}-${Date.now()}`;
+        
+        // Return an img element that will be properly handled with error management
+        return `<img id="${iconId}" src="${basePath}default.svg" alt="${toolName}" width="32" height="32" data-tool-name="${cleanedToolName}" data-base-path="${basePath}">`;
+    }
+
+    // Add this method to safely load tool icons without console errors
+    async loadToolIconSafely(imgElement) {
+        const toolName = imgElement.dataset.toolName;
+        const basePath = imgElement.dataset.basePath;
+        
+        if (!toolName || !basePath) {
+            return; // Already using default
+        }
+        
+        // List of known available tool icons (update this list when adding new icons)
+        const availableIcons = new Set(['default']);
+        
+        // Only attempt to load if the icon is in our known list
+        if (availableIcons.has(toolName)) {
+            const iconUrl = `${basePath}${toolName}.svg`;
+            imgElement.src = iconUrl;
+        }
+        // Otherwise, keep the default icon that's already loaded
     }
 
     createToolsCard(tool) {
@@ -214,6 +243,9 @@ class VikiToolsCanvas extends BaseComponent {
                     <div class="card-info">
                         <h3 class="model-name">${tool.name}</h3>
                         <p class="provider-name">${tool.description || 'MCP Tool'}</p>
+                        <div class="tool-info">
+                            <span></span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-actions">

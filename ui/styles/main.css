@@ -79,8 +79,10 @@ body, html {
     left: 20px;
     right: 20px;
     height: 1px;
-    background-color: #e0e0e0;
+    background-color: var(--border-primary);
 }
+
+
 
 .view-header h2 {
     margin: 0;

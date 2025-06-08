@@ -61,6 +61,34 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* LLM info display */
+.llm-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 4px 0;
+    color: #666;
+    font-size: 14px;
+    line-height: 1;
+    height: 24px;
+    min-height: 24px;
+}
+
+.llm-info img {
+    width: 16px;
+    height: 16px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.llm-info span {
+    line-height: 1;
+    vertical-align: baseline;
+    display: flex;
+    align-items: center;
+}
+
 /* LLM Modal */
 .llm-modal {
     position: fixed;
@@ -74,6 +102,62 @@
     justify-content: center;
     z-index: 1000;
     backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    padding: 0;
+    max-width: 600px;
+    width: 90%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e1e5e9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    flex-shrink: 0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+    background-color: #f3f4f6;
 }
 
 /* Responsive */
