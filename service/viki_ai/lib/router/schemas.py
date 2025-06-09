@@ -589,3 +589,102 @@ class FileStoreResponse(FileStoreBase, CommonModelConfig):
 
 class FileStoreContentResponse(FileStoreResponse):
     fileContent: bytes = Field(..., alias="fls_file_content", description="Binary content of the file")
+
+
+# Chat Schemas
+class ChatSessionBase(BaseModel):
+    name: str = Field(..., alias="cht_name", description="Name of the chat session")
+    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session")
+    agentId: str = Field(..., alias="cht_agt_id", description="ID of the agent associated with this chat session")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class ChatSessionCreate(ChatSessionBase):
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Customer Support Chat",
+                "description": "Chat session for customer support",
+                "agentId": "agent-01"
+            }
+        }
+    )
+
+
+class ChatSessionUpdate(BaseModel):
+    name: Optional[str] = Field(None, alias="cht_name", description="Name of the chat session")
+    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session")
+    agentId: Optional[str] = Field(None, alias="cht_agt_id", description="ID of the agent associated with this chat session")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Updated Customer Support Chat",
+                "description": "Updated description for chat session"
+            }
+        }
+    )
+
+
+class ChatSessionResponse(ChatSessionBase, CommonModelConfig):
+    id: str = Field(..., alias="cht_id", description="Unique identifier for the chat session")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the chat session")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the chat session was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the chat session")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the chat session was last updated")
+
+
+class ChatMessageBase(BaseModel):
+    sessionId: str = Field(..., alias="msg_cht_id", description="ID of the chat session this message belongs to")
+    agentName: str = Field(..., alias="msg_agent_name", description="Name of the agent handling this message")
+    content: List[Dict] = Field(..., alias="msg_content", description="Array of message content objects")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "sessionId": "chat-session-01",
+                "agentName": "Support Assistant",
+                "content": [
+                    {"type": "text", "text": "Hello, how can I help you today?"}
+                ]
+            }
+        }
+    )
+
+
+class ChatMessageUpdate(BaseModel):
+    content: Optional[List[Dict]] = Field(None, alias="msg_content", description="Array of message content objects")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class ChatMessageResponse(ChatMessageBase, CommonModelConfig):
+    id: str = Field(..., alias="msg_id", description="Unique identifier for the chat message")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the message")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the message was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the message")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the message was last updated")

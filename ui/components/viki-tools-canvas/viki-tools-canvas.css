@@ -189,8 +189,8 @@
 .tools-modal .form-group input:focus,
 .tools-modal .form-group textarea:focus {
     outline: none;
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
 }
 
 .tools-modal .form-group input::placeholder,
@@ -299,8 +299,8 @@
 
 .env-variable-row input:focus {
     outline: none;
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
 }
 
 .env-variable-row input::placeholder {

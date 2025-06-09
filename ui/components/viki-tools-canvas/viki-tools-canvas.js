@@ -489,7 +489,7 @@ class VikiToolsCanvas extends BaseComponent {
 
         if (envVariables.length > 0) {
             try {
-                const response = await window.apiMethods.post(`/api/0.1.0/tools/${toolId}/env-variables`, envVariables, {
+                const response = await window.apiMethods.post(`/api/0.1.0/tools/${toolId}/env-variables/bulk`, envVariables, {
                     baseUrl: 'http://localhost:8080'
                 });
 

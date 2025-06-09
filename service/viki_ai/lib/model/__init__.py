@@ -6,6 +6,7 @@ from .llm import LLMConfig
 from .tools import Tool, ToolEnvironmentVariable
 from .knowledge_base import KnowledgeBaseDetail, KnowledgeBaseDocument
 from .agent import Agent, AgentTool, AgentKnowledgeBase
+from .chat import ChatSession, ChatMessage
 from .db_session import DatabaseSession
 
 __all__ = [
@@ -22,5 +23,7 @@ __all__ = [
     'Agent',
     'AgentTool',
     'AgentKnowledgeBase',
+    'ChatSession',
+    'ChatMessage',
     'DatabaseSession'
 ]
