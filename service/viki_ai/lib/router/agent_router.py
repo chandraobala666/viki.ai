@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
+import logging
 
 from ..model.agent import Agent
 from ..model.db_session import get_db
@@ -120,16 +121,60 @@ def update_agent(agent_id: str, agent: AgentUpdate, db: Session = Depends(get_db
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(agent_id: str, db: Session = Depends(get_db)):
     """
-    Delete an agent
+    Delete an agent with cascade delete of related records
     
-    Permanently removes an agent from the system.
+    Permanently removes an agent from the system along with all its associations.
+    This includes:
+    - All agent-tool relationships
+    - All agent-knowledge base relationships
+    - The agent itself
     
     - **agent_id**: The unique identifier of the agent to delete
     """
-    db_agent = db.query(Agent).filter(Agent.agt_id == agent_id).first()
-    if db_agent is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent with ID {agent_id} not found")
+    import logging
+    logger = logging.getLogger(__name__)
     
-    db.delete(db_agent)
-    db.commit()
-    return None
+    try:
+        from ..model.agent import AgentTool, AgentKnowledgeBase
+        
+        logger.info(f"Attempting to delete agent with ID: {agent_id}")
+        
+        # Check if agent exists first
+        db_agent = db.query(Agent).filter(Agent.agt_id == agent_id).first()
+        if db_agent is None:
+            logger.warning(f"Agent with ID {agent_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail=f"Agent with ID {agent_id} not found"
+            )
+        
+        # Delete related records first to avoid foreign key constraint violations
+        
+        # 1. Delete all agent-tool relationships
+        logger.debug(f"Deleting agent-tool relationships for agent {agent_id}")
+        agent_tools_deleted = db.query(AgentTool).filter(AgentTool.ato_agt_id == agent_id).delete()
+        logger.debug(f"Deleted {agent_tools_deleted} agent-tool relationships")
+        
+        # 2. Delete all agent-knowledge base relationships
+        logger.debug(f"Deleting agent-knowledge base relationships for agent {agent_id}")
+        agent_kbs_deleted = db.query(AgentKnowledgeBase).filter(AgentKnowledgeBase.akb_agt_id == agent_id).delete()
+        logger.debug(f"Deleted {agent_kbs_deleted} agent-knowledge base relationships")
+        
+        # 3. Now delete the agent itself
+        logger.debug(f"Deleting agent {agent_id}")
+        db.delete(db_agent)
+        db.commit()
+        
+        logger.info(f"Successfully deleted agent {agent_id} and all its relationships")
+        return None
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting agent {agent_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error while deleting agent: {str(e)}"
+        )
