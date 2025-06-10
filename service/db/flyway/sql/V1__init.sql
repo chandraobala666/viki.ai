@@ -78,7 +78,7 @@ CREATE TABLE tool_environment_variables (
     creation_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_updated_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tev_tol_id, tev_key),
-    FOREIGN KEY (tev_tol_id) REFERENCES tools(tol_id) ON DELETE CASCADE
+    FOREIGN KEY (tev_tol_id) REFERENCES tools(tol_id) ON DELETE CASCADEF
 );
 
 CREATE TABLE IF NOT EXISTS tool_resources (

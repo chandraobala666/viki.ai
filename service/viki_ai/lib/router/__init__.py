@@ -10,6 +10,7 @@ from .knowledge_base_router import router as knowledge_base_router
 from .tools_router import router as tools_router
 from .lookup_router import router as lookup_router
 from .file_store_router import router as file_store_router
+from .chat_router import router as chat_router
 
 def get_routers():
     """
@@ -23,5 +24,6 @@ def get_routers():
         knowledge_base_router,
         tools_router,
         lookup_router,
-        file_store_router
+        file_store_router,
+        chat_router
     ]

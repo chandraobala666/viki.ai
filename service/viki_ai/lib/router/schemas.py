@@ -645,3 +645,130 @@ class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
     creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup detail was created")
     lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup detail")
     lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup detail was last updated")
+
+
+# Chat Schemas
+class ChatSessionBase(BaseModel):
+    name: str = Field(..., alias="cht_name", description="Name of the chat session")
+    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session's purpose")
+    agent: str = Field(..., alias="cht_agt_id", description="ID of the agent associated with this chat session")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class ChatSessionCreate(ChatSessionBase):
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Customer Support Chat",
+                "description": "Chat session for handling customer support queries",
+                "agent": "agent-01"
+            }
+        }
+    )
+
+
+class ChatSessionUpdate(BaseModel):
+    name: Optional[str] = Field(None, alias="cht_name", description="Name of the chat session")
+    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session's purpose")
+    agent: Optional[str] = Field(None, alias="cht_agt_id", description="ID of the agent associated with this chat session")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Updated Customer Support Chat",
+                "description": "Enhanced chat session for handling customer support queries with additional capabilities",
+                "agent": "agent-02"
+            }
+        }
+    )
+
+
+class ChatSessionResponse(ChatSessionBase):
+    id: str = Field(..., alias="cht_id", description="Unique identifier for the chat session")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the chat session")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the chat session was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the chat session")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the chat session was last updated")
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
+
+
+class ChatMessageBase(BaseModel):
+    chatSession: str = Field(..., alias="msg_cht_id", description="ID of the chat session this message belongs to")
+    agentName: str = Field(..., alias="msg_agent_name", description="Name of the agent that sent this message")
+    content: List[Dict] = Field(..., alias="msg_content", description="Message content as an array of message objects")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "chatSession": "chat-01",
+                "agentName": "Support Assistant",
+                "content": [
+                    {"role": "user", "content": "Hello, I need help"},
+                    {"role": "assistant", "content": "Hi! I'm here to help you. What can I assist you with today?"}
+                ]
+            }
+        }
+    )
+
+
+class ChatMessageUpdate(BaseModel):
+    chatSession: Optional[str] = Field(None, alias="msg_cht_id", description="ID of the chat session this message belongs to")
+    agentName: Optional[str] = Field(None, alias="msg_agent_name", description="Name of the agent that sent this message")
+    content: Optional[List[Dict]] = Field(None, alias="msg_content", description="Message content as an array of message objects")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "agentName": "Updated Support Assistant",
+                "content": [
+                    {"role": "user", "content": "Hello, I need help"},
+                    {"role": "assistant", "content": "Hi! I'm here to help you. What can I assist you with today?"},
+                    {"role": "user", "content": "I have a question about my account"}
+                ]
+            }
+        }
+    )
+
+
+class ChatMessageResponse(ChatMessageBase):
+    id: str = Field(..., alias="msg_id", description="Unique identifier for the chat message")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the chat message")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the chat message was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the chat message")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the chat message was last updated")
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
