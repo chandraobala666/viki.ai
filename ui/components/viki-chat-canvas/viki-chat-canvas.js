@@ -25,7 +25,7 @@ class VikiChatCanvas extends BaseComponent {
         const agentSelect = this.shadowRoot.querySelector('#agentSelect');
         const messageInput = this.shadowRoot.querySelector('#messageInput');
         const sendButton = this.shadowRoot.querySelector('#sendButton');
-        const chatInputContainer = this.shadowRoot.querySelector('#chatInputContainer');
+        const chatFooter = this.shadowRoot.querySelector('#chatFooter');
 
         // Agent selection handler
         agentSelect?.addEventListener('change', (e) => {
@@ -176,24 +176,24 @@ class VikiChatCanvas extends BaseComponent {
     enableChatInput() {
         const messageInput = this.shadowRoot.querySelector('#messageInput');
         const sendButton = this.shadowRoot.querySelector('#sendButton');
-        const chatInputContainer = this.shadowRoot.querySelector('#chatInputContainer');
+        const chatFooter = this.shadowRoot.querySelector('#chatFooter');
 
         if (messageInput) messageInput.disabled = false;
         if (sendButton) sendButton.disabled = false;
-        if (chatInputContainer) chatInputContainer.style.display = 'block';
+        if (chatFooter) chatFooter.style.display = 'flex';
     }
 
     disableChatInput() {
         const messageInput = this.shadowRoot.querySelector('#messageInput');
         const sendButton = this.shadowRoot.querySelector('#sendButton');
-        const chatInputContainer = this.shadowRoot.querySelector('#chatInputContainer');
+        const chatFooter = this.shadowRoot.querySelector('#chatFooter');
 
         if (messageInput) {
             messageInput.disabled = true;
             messageInput.value = '';
         }
         if (sendButton) sendButton.disabled = true;
-        if (chatInputContainer) chatInputContainer.style.display = 'none';
+        if (chatFooter) chatFooter.style.display = 'none';
     }
 
     showWelcomeMessage() {
