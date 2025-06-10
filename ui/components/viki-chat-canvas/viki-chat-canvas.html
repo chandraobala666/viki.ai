@@ -1,0 +1,38 @@
+<div class="chat-canvas">
+    <div class="chat-header">
+        <h2>Chat</h2>
+        <div class="agent-selector">
+            <label for="agentSelect">Agent:</label>
+            <select id="agentSelect" class="agent-dropdown">
+                <option value="">Select an agent...</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="chat-content">
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-message">
+                <div class="bot-message">
+                    <div class="message-avatar">
+                        <img src="./ui/assets/chat/bot.svg" alt="Bot" width="32" height="32">
+                    </div>
+                    <div class="message-content">
+                        <p>Welcome! Please select an agent from the dropdown above to start chatting.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container" id="chatInputContainer" style="display: none;">
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Type your message here..." disabled>
+                <button id="sendButton" class="send-btn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13"/>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

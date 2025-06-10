@@ -33,6 +33,7 @@ class ChatMessage(Base, TimestampMixin):
     msg_id = Column(VARCHAR(80), nullable=False)
     msg_cht_id = Column(VARCHAR(80), ForeignKey('chat_sessions.cht_id'), nullable=False)
     msg_agent_name = Column(VARCHAR(240), nullable=False)
+    msg_role = Column(VARCHAR(10), nullable=False)
     msg_content = Column(JSON, nullable=False)  # Stores message array as JSON
     
     # Define primary key in mapper args

@@ -4,7 +4,14 @@ Pydantic schemas for the models
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict
 from datetime import datetime
+from enum import Enum
 import uuid
+
+
+class MessageRole(str, Enum):
+    """Enum for message role values"""
+    USER = "USER"
+    AI = "AI"
 
 
 class CommonModelConfig:
@@ -711,6 +718,7 @@ class ChatSessionResponse(ChatSessionBase):
 class ChatMessageBase(BaseModel):
     chatSession: str = Field(..., alias="msg_cht_id", description="ID of the chat session this message belongs to")
     agentName: str = Field(..., alias="msg_agent_name", description="Name of the agent that sent this message")
+    role: MessageRole = Field(..., alias="msg_role", description="Role of the message sender - either USER or AI")
     content: List[Dict] = Field(..., alias="msg_content", description="Message content as an array of message objects")
     
     model_config = ConfigDict(
@@ -729,6 +737,7 @@ class ChatMessageCreate(ChatMessageBase):
             "example": {
                 "chatSession": "chat-01",
                 "agentName": "Support Assistant",
+                "role": "USER",
                 "content": [
                     {"role": "user", "content": "Hello, I need help"},
                     {"role": "assistant", "content": "Hi! I'm here to help you. What can I assist you with today?"}
@@ -741,6 +750,7 @@ class ChatMessageCreate(ChatMessageBase):
 class ChatMessageUpdate(BaseModel):
     chatSession: Optional[str] = Field(None, alias="msg_cht_id", description="ID of the chat session this message belongs to")
     agentName: Optional[str] = Field(None, alias="msg_agent_name", description="Name of the agent that sent this message")
+    role: Optional[MessageRole] = Field(None, alias="msg_role", description="Role of the message sender - either USER or AI")
     content: Optional[List[Dict]] = Field(None, alias="msg_content", description="Message content as an array of message objects")
     
     model_config = ConfigDict(
@@ -749,6 +759,7 @@ class ChatMessageUpdate(BaseModel):
         json_schema_extra={
             "example": {
                 "agentName": "Updated Support Assistant",
+                "role": "AI",
                 "content": [
                     {"role": "user", "content": "Hello, I need help"},
                     {"role": "assistant", "content": "Hi! I'm here to help you. What can I assist you with today?"},

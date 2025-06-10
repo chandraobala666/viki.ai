@@ -222,6 +222,7 @@ def create_chat_message(message: ChatMessageCreate, db: Session = Depends(get_db
     
     - **chatSession**: Reference to the chat session this message belongs to
     - **agentName**: Name of the agent sending this message
+    - **role**: Role of the message sender - either USER or AI
     - **content**: Message content as an array of message objects
     """
     # Check if chat session exists
@@ -240,6 +241,7 @@ def create_chat_message(message: ChatMessageCreate, db: Session = Depends(get_db
         msg_id=message_id,
         msg_cht_id=message.chatSession,
         msg_agent_name=message.agentName,
+        msg_role=message.role.value,
         msg_content=message.content,
     )
     db.add(db_message)
@@ -259,6 +261,7 @@ def update_chat_message(message_id: str, message: ChatMessageUpdate, db: Session
     - **message_id**: The unique identifier of the chat message to update
     - **chatSession**: (Optional) New chat session reference
     - **agentName**: (Optional) New agent name
+    - **role**: (Optional) New message role - either USER or AI
     - **content**: (Optional) New message content
     """
     db_message = db.query(ChatMessage).filter(ChatMessage.msg_id == message_id).first()
@@ -272,11 +275,15 @@ def update_chat_message(message_id: str, message: ChatMessageUpdate, db: Session
     field_to_db_map = {
         "chatSession": "msg_cht_id",
         "agentName": "msg_agent_name",
+        "role": "msg_role",
         "content": "msg_content"
     }
     
     for field, value in update_data.items():
         db_field = field_to_db_map.get(field, field)
+        # Handle enum values for role field
+        if field == "role" and value is not None:
+            value = value.value
         setattr(db_message, db_field, value)
 
     db.commit()
