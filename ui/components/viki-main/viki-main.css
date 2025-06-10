@@ -34,6 +34,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    min-height: 0; /* Prevent flex children from growing beyond container */
 }
 
 /* Ensure only chat canvas takes full space and has overflow hidden */
@@ -41,6 +42,18 @@
     flex: 1;
     height: 100%;
     width: 100%;
+    overflow: hidden;
+}
+
+/* Ensure all other canvas components maintain proper height constraints */
+.canvas-content viki-llm-canvas,
+.canvas-content viki-tools-canvas,
+.canvas-content viki-rag-canvas,
+.canvas-content viki-agents-canvas {
+    flex: 1;
+    height: 100%;
+    width: 100%;
+    min-height: 0; /* Prevent flex children from growing beyond container */
     overflow: hidden;
 }
 

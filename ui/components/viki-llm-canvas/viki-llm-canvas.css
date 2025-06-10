@@ -40,12 +40,14 @@
 .llm-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, 350px);
+    grid-auto-rows: max-content; /* Prevent rows from expanding beyond content height */
     gap: 20px;
     padding: 20px;
     flex: 1;
     overflow-y: auto;
     min-height: 0;
     justify-content: start;
+    align-content: start; /* Align grid content to start to prevent stretching */
 }
 
 .llm-card {
@@ -55,6 +57,7 @@
     padding: 16px;
     transition: box-shadow 0.2s ease;
     position: relative;
+    height: fit-content; /* Ensure cards only take up space needed for their content */
 }
 
 .llm-card:hover {

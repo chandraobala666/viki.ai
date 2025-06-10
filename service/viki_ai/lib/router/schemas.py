@@ -657,7 +657,6 @@ class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
 # Chat Schemas
 class ChatSessionBase(BaseModel):
     name: str = Field(..., alias="cht_name", description="Name of the chat session")
-    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session's purpose")
     agent: str = Field(..., alias="cht_agt_id", description="ID of the agent associated with this chat session")
     
     model_config = ConfigDict(
@@ -675,7 +674,6 @@ class ChatSessionCreate(ChatSessionBase):
         json_schema_extra={
             "example": {
                 "name": "Customer Support Chat",
-                "description": "Chat session for handling customer support queries",
                 "agent": "agent-01"
             }
         }
@@ -684,7 +682,6 @@ class ChatSessionCreate(ChatSessionBase):
 
 class ChatSessionUpdate(BaseModel):
     name: Optional[str] = Field(None, alias="cht_name", description="Name of the chat session")
-    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session's purpose")
     agent: Optional[str] = Field(None, alias="cht_agt_id", description="ID of the agent associated with this chat session")
     
     model_config = ConfigDict(
@@ -693,7 +690,6 @@ class ChatSessionUpdate(BaseModel):
         json_schema_extra={
             "example": {
                 "name": "Updated Customer Support Chat",
-                "description": "Enhanced chat session for handling customer support queries with additional capabilities",
                 "agent": "agent-02"
             }
         }

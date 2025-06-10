@@ -81,7 +81,6 @@ def create_chat_session(session: ChatSessionCreate, db: Session = Depends(get_db
     db_session = ChatSession(
         cht_id=session_id,
         cht_name=session.name,
-        cht_description=session.description,
         cht_agt_id=session.agent,
     )
     db.add(db_session)
@@ -100,7 +99,6 @@ def update_chat_session(session_id: str, session: ChatSessionUpdate, db: Session
     
     - **session_id**: The unique identifier of the chat session to update
     - **name**: (Optional) New name for the chat session
-    - **description**: (Optional) New description of the chat session's purpose
     - **agent**: (Optional) New agent reference for the chat session
     """
     db_session = db.query(ChatSession).filter(ChatSession.cht_id == session_id).first()
@@ -113,7 +111,6 @@ def update_chat_session(session_id: str, session: ChatSessionUpdate, db: Session
     # Map field names back to database column names
     field_to_db_map = {
         "name": "cht_name",
-        "description": "cht_description",
         "agent": "cht_agt_id"
     }
     

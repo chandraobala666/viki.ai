@@ -166,7 +166,6 @@ CREATE TABLE agent_knowledge_bases (
 CREATE TABLE chat_sessions (
     cht_id VARCHAR(80) NOT NULL,
     cht_name VARCHAR(240) NOT NULL,
-    cht_description VARCHAR(4000),
     cht_agt_id VARCHAR(80) NOT NULL,
     created_by VARCHAR(80),
     last_updated_by VARCHAR(80),

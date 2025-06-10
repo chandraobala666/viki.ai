@@ -10,7 +10,6 @@ class ChatSession(Base, TimestampMixin):
     
     cht_id = Column(VARCHAR(80), nullable=False)
     cht_name = Column(VARCHAR(240), nullable=False)
-    cht_description = Column(VARCHAR(4000))
     cht_agt_id = Column(VARCHAR(80), ForeignKey('agents.agt_id'), nullable=False)
     
     # Define primary key in mapper args
