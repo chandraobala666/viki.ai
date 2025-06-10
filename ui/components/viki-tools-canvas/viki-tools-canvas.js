@@ -20,6 +20,13 @@ class VikiToolsCanvas extends BaseComponent {
 
     setupEventListeners(shadowRoot) {
         // Event listeners for Tools canvas specific functionality
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.resources-dropdown')) {
+                this.closeAllResourcesDropdowns();
+            }
+        });
     }
 
     async loadToolsView() {
@@ -76,6 +83,7 @@ class VikiToolsCanvas extends BaseComponent {
 
                             <div class="form-actions">
                                 <button type="button" class="btn-secondary" id="cancelBtn">Cancel</button>
+                                <button type="button" class="btn-secondary" id="testMcpBtn">Test MCP</button>
                                 <button type="submit" class="btn-primary" id="saveBtn">Save</button>
                             </div>
                         </form>
@@ -98,6 +106,7 @@ class VikiToolsCanvas extends BaseComponent {
         const cancelBtn = contentArea.querySelector('#cancelBtn');
         const form = contentArea.querySelector('#toolsForm');
         const addEnvBtn = contentArea.querySelector('#addEnvBtn');
+        const testMcpBtn = contentArea.querySelector('#testMcpBtn');
 
         // Add Tool button
         addBtn?.addEventListener('click', async () => {
@@ -115,6 +124,11 @@ class VikiToolsCanvas extends BaseComponent {
         form?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleToolsFormSubmit(contentArea);
+        });
+
+        // Test MCP button
+        testMcpBtn?.addEventListener('click', async () => {
+            await this.handleTestMcp(contentArea);
         });
 
         // Add environment variable button
@@ -179,55 +193,6 @@ class VikiToolsCanvas extends BaseComponent {
             const card = this.createToolsCard(tool);
             container.appendChild(card);
         });
-        
-        // After all cards are rendered, load icons safely
-        setTimeout(() => {
-            const iconImages = container.querySelectorAll('img[data-tool-name]');
-            iconImages.forEach(img => this.loadToolIconSafely(img));
-        }, 0);
-    }
-
-    getToolIcon(toolName) {
-        const basePath = './ui/assets/tools/';
-        
-        if (!toolName) {
-            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32">`;
-        }
-        
-        // Clean the tool name to create a valid filename
-        const cleanedToolName = toolName.toLowerCase()
-            .replace(/[^a-z0-9]/g, '') // Remove non-alphanumeric characters
-            .trim();
-        
-        if (!cleanedToolName) {
-            return `<img src="${basePath}default.svg" alt="Tool" width="32" height="32">`;
-        }
-        
-        // Create a unique ID for this icon to handle loading
-        const iconId = `tool-icon-${cleanedToolName}-${Date.now()}`;
-        
-        // Return an img element that will be properly handled with error management
-        return `<img id="${iconId}" src="${basePath}default.svg" alt="${toolName}" width="32" height="32" data-tool-name="${cleanedToolName}" data-base-path="${basePath}">`;
-    }
-
-    // Add this method to safely load tool icons without console errors
-    async loadToolIconSafely(imgElement) {
-        const toolName = imgElement.dataset.toolName;
-        const basePath = imgElement.dataset.basePath;
-        
-        if (!toolName || !basePath) {
-            return; // Already using default
-        }
-        
-        // List of known available tool icons (update this list when adding new icons)
-        const availableIcons = new Set(['default']);
-        
-        // Only attempt to load if the icon is in our known list
-        if (availableIcons.has(toolName)) {
-            const iconUrl = `${basePath}${toolName}.svg`;
-            imgElement.src = iconUrl;
-        }
-        // Otherwise, keep the default icon that's already loaded
     }
 
     createToolsCard(tool) {
@@ -236,15 +201,24 @@ class VikiToolsCanvas extends BaseComponent {
         
         card.innerHTML = `
             <div class="card-header">
-                <div class="card-main-content">
-                    <div class="provider-icon">
-                        ${this.getToolIcon(tool.name)}
-                    </div>
+                <div class="card-main-content" style="cursor: pointer;">
                     <div class="card-info">
                         <h3 class="model-name">${tool.name}</h3>
                         <p class="provider-name">${tool.description || 'MCP Tool'}</p>
-                        <div class="tool-info">
-                            <span></span>
+                        <div class="function-count">
+                            <div class="tools-count">
+                                <img src="./ui/assets/icons/database.svg" alt="Functions" width="16" height="16">
+                                <span>${tool.mcpFunctionCount || 0} Tools</span>
+                            </div>
+                            <div class="resources-dropdown">
+                                <button class="resources-dropdown-btn" onclick="this.getRootNode().host.toggleResourcesDropdown(event, '${tool.id}')" title="View Resources">
+                                    <span class="dropdown-label" id="dropdown-label-${tool.id}">Tools List</span>
+                                    <span class="dropdown-arrow">▼</span>
+                                </button>
+                                <div class="resources-dropdown-content" id="resources-${tool.id}" style="display: none;">
+                                    <div class="loading-resources">Loading resources...</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -353,6 +327,30 @@ class VikiToolsCanvas extends BaseComponent {
                 // Save environment variables
                 await this.saveEnvironmentVariables(toolId, contentArea);
                 
+                // Test MCP configuration and update function count
+                saveBtn.textContent = 'Testing MCP...';
+                try {
+                    const testResponse = await window.apiMethods.post(`/api/0.1.0/tools/${toolId}/test-mcp`, {}, {
+                        baseUrl: baseUrl
+                    });
+                    
+                    if (testResponse.status >= 200 && testResponse.status < 300) {
+                        const testResult = testResponse.data;
+                        if (testResult.success) {
+                            console.log(`✅ MCP test successful. Function count: ${testResult.function_count}`);
+                        } else {
+                            console.warn(`⚠️ MCP test failed: ${testResult.message}`);
+                            alert(`Warning: MCP configuration test failed: ${testResult.message}`);
+                        }
+                    } else {
+                        console.warn('⚠️ Failed to test MCP configuration');
+                        alert('Warning: Failed to test MCP configuration. Tool saved but function count may not be accurate.');
+                    }
+                } catch (mcpError) {
+                    console.warn('⚠️ Error testing MCP configuration:', mcpError);
+                    alert('Warning: Error testing MCP configuration. Tool saved but function count may not be accurate.');
+                }
+                
                 this.closeToolsModal(contentArea);
                 await this.loadTools(contentArea);
             } else {
@@ -365,6 +363,60 @@ class VikiToolsCanvas extends BaseComponent {
             // Reset save button
             saveBtn.textContent = originalSaveBtnText;
             saveBtn.disabled = false;
+        }
+    }
+
+    async handleTestMcp(contentArea) {
+        const form = contentArea.querySelector('#toolsForm');
+        const formData = new FormData(form);
+        const toolId = form.dataset.toolId;
+        const testMcpBtn = form.querySelector('#testMcpBtn');
+
+        // Check if this is an edit (tool exists) or a new tool
+        if (!toolId) {
+            alert('Please save the tool first before testing MCP configuration.');
+            return;
+        }
+
+        // Save button to show loading state
+        const originalBtnText = testMcpBtn.textContent;
+        testMcpBtn.textContent = 'Testing...';
+        testMcpBtn.disabled = true;
+
+        try {
+            const baseUrl = 'http://localhost:8080';
+            
+            // First save current environment variables
+            await this.saveEnvironmentVariables(toolId, contentArea);
+            
+            // Test MCP configuration
+            const testResponse = await window.apiMethods.post(`/api/0.1.0/tools/${toolId}/test-mcp`, {}, {
+                baseUrl: baseUrl
+            });
+            
+            if (testResponse.status >= 200 && testResponse.status < 300) {
+                const testResult = testResponse.data;
+                if (testResult.success) {
+                    alert(`✅ MCP Test Successful!\n\nFound ${testResult.function_count} MCP functions.\n\n${testResult.message}`);
+                    console.log(`✅ MCP test successful. Function count: ${testResult.function_count}`);
+                    
+                    // Reload tools to show updated function count
+                    await this.loadTools(contentArea);
+                } else {
+                    alert(`❌ MCP Test Failed!\n\n${testResult.message}`);
+                    console.warn(`⚠️ MCP test failed: ${testResult.message}`);
+                }
+            } else {
+                alert('❌ Failed to test MCP configuration. Please check your configuration and try again.');
+                console.warn('⚠️ Failed to test MCP configuration');
+            }
+        } catch (error) {
+            console.error('Error testing MCP configuration:', error);
+            alert(`❌ Error testing MCP configuration: ${error.message || 'Unknown error'}`);
+        } finally {
+            // Reset button
+            testMcpBtn.textContent = originalBtnText;
+            testMcpBtn.disabled = false;
         }
     }
 
@@ -392,6 +444,83 @@ class VikiToolsCanvas extends BaseComponent {
         } catch (error) {
             console.error('Error deleting tool:', error);
             alert('Failed to delete tool configuration');
+        }
+    }
+
+    async toggleResourcesDropdown(event, toolId) {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        const dropdown = this.shadowRoot.querySelector(`#resources-${toolId}`);
+        const button = event.target.closest('.resources-dropdown-btn');
+        const arrow = button.querySelector('.dropdown-arrow');
+        
+        if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+            // Close all other dropdowns first
+            this.closeAllResourcesDropdowns();
+            
+            // Position the dropdown correctly
+            const rect = button.getBoundingClientRect();
+            dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
+            dropdown.style.left = `${rect.right - 280 + window.scrollX}px`; // Align to right edge
+            
+            // Open this dropdown
+            dropdown.style.display = 'block';
+            arrow.textContent = '▲';
+            
+            // Load resources if not already loaded
+            if (dropdown.querySelector('.loading-resources')) {
+                await this.loadToolResources(toolId, dropdown);
+            }
+        } else {
+            // Close this dropdown
+            dropdown.style.display = 'none';
+            arrow.textContent = '▼';
+        }
+    }
+
+    closeAllResourcesDropdowns() {
+        const dropdowns = this.shadowRoot.querySelectorAll('.resources-dropdown-content');
+        const arrows = this.shadowRoot.querySelectorAll('.dropdown-arrow');
+        
+        dropdowns.forEach(dropdown => {
+            dropdown.style.display = 'none';
+        });
+        
+        arrows.forEach(arrow => {
+            arrow.textContent = '▼';
+        });
+    }
+
+    async loadToolResources(toolId, dropdown) {
+        try {
+            const response = await window.apiMethods.get(`/api/0.1.0/tools/${toolId}/resources`, {
+                baseUrl: 'http://localhost:8080'
+            });
+
+            if (response.status === 200 && response.data) {
+                const resources = response.data;
+                
+                if (resources.length === 0) {
+                    dropdown.innerHTML = '<div class="no-resources">No resources found</div>';
+                    // Keep default "Tools List" text
+                } else {
+                    dropdown.innerHTML = resources.map(resource => `
+                        <div class="resource-item non-selectable">
+                            <div class="resource-name">${resource.resourceName}</div>
+                            <div class="resource-description">${resource.resourceDescription || 'No description'}</div>
+                        </div>
+                    `).join('');
+                    
+                    // Keep default "Tools List" text instead of changing to resource name
+                    // Note: Removed the code that changed the button text to the first resource
+                }
+            } else {
+                dropdown.innerHTML = '<div class="error-resources">Failed to load resources</div>';
+            }
+        } catch (error) {
+            console.error('Error loading tool resources:', error);
+            dropdown.innerHTML = '<div class="error-resources">Error loading resources</div>';
         }
     }
 

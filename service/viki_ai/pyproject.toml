@@ -11,4 +11,13 @@ dependencies = [
     "uvicorn>=0.28.0",
     "pydantic>=2.7.0",
     "python-multipart>=0.0.20",
+    "langchain>=0.3.25",
+    "langchain-ollama>=0.3.3",
+    "langchain-openai>=0.3.21",
+    "langchain-huggingface>=0.2.0",
+    "langchain-groq>=0.3.2",
+    "langchain-azure-ai>=0.1.4",
+    "mcp[cli]>=1.9.3",
+    "langchain-mcp-adapters>=0.1.7",
+    "langgraph>=0.4.8",
 ]

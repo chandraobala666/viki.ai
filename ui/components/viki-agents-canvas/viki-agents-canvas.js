@@ -339,7 +339,9 @@ class VikiAgentsCanvas extends BaseComponent {
                         <h3 class="model-name">${agent.name}</h3>
                         <p class="provider-name">${agent.description}</p>
                         <div class="agent-info">
-                            <span></span>
+                            <div class="agent-counts" id="agent-counts-${agent.id}">
+                                <span class="loading-counts">Loading...</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -354,7 +356,65 @@ class VikiAgentsCanvas extends BaseComponent {
             </div>
         `;
         
+        // Load agent relationship counts asynchronously
+        this.loadAgentCounts(agent.id);
+        
         return card;
+    }
+
+    async loadAgentCounts(agentId) {
+        try {
+            let toolsCount = 0;
+            let ragCount = 0;
+
+            // Load agent tools count
+            const toolsResponse = await window.apiMethods.get('/api/0.1.0/agent-relationships/tools', {
+                baseUrl: 'http://localhost:8080'
+            });
+            
+            if (toolsResponse.status === 200) {
+                const agentTools = toolsResponse.data.filter(at => at.agent === agentId);
+                toolsCount = agentTools.length;
+            }
+
+            // Load agent knowledge bases count
+            const kbResponse = await window.apiMethods.get('/api/0.1.0/agent-relationships/knowledge-bases', {
+                baseUrl: 'http://localhost:8080'
+            });
+            
+            if (kbResponse.status === 200) {
+                const agentKBs = kbResponse.data.filter(akb => akb.agent === agentId);
+                ragCount = agentKBs.length;
+            }
+
+            // Update the display
+            this.updateAgentCountsDisplay(agentId, toolsCount, ragCount);
+
+        } catch (error) {
+            console.error('Error loading agent counts:', error);
+            // Show error state
+            this.updateAgentCountsDisplay(agentId, 0, 0, true);
+        }
+    }
+
+    updateAgentCountsDisplay(agentId, toolsCount, ragCount, hasError = false) {
+        const countsElement = this.shadowRoot.querySelector(`#agent-counts-${agentId}`);
+        if (countsElement) {
+            if (hasError) {
+                countsElement.innerHTML = '<span class="error-counts">Error loading counts</span>';
+            } else {
+                countsElement.innerHTML = `
+                    <div class="tools-count">
+                        <img src="./ui/assets/icons/database.svg" alt="Tools" width="16" height="16">
+                        <span>${toolsCount} Tools</span>
+                    </div>
+                    <div class="rag-count">
+                        <img src="./ui/assets/icons/file.svg" alt="RAG" width="16" height="16">
+                        <span>${ragCount} RAG</span>
+                    </div>
+                `;
+            }
+        }
     }
 
     renderToolsSearch() {

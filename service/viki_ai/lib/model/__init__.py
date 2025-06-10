@@ -3,7 +3,7 @@ from .base import Base, TimestampMixin
 from .lookup import LookupType, LookupDetail
 from .file_store import FileStore
 from .llm import LLMConfig
-from .tools import Tool, ToolEnvironmentVariable
+from .tools import Tool, ToolEnvironmentVariable, ToolResource
 from .knowledge_base import KnowledgeBaseDetail, KnowledgeBaseDocument
 from .agent import Agent, AgentTool, AgentKnowledgeBase
 from .chat import ChatSession, ChatMessage
@@ -18,6 +18,7 @@ __all__ = [
     'LLMConfig',
     'Tool',
     'ToolEnvironmentVariable',
+    'ToolResource',
     'KnowledgeBaseDetail',
     'KnowledgeBaseDocument',
     'Agent',

@@ -60,6 +60,7 @@ CREATE TABLE tools (
     tol_name VARCHAR(240) NOT NULL,
     tol_description VARCHAR(4000),
     tol_mcp_command VARCHAR(240) NOT NULL,
+    tol_mcp_function_count INTEGER DEFAULT 0,
     created_by VARCHAR(80),
     last_updated_by VARCHAR(80),
     creation_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -79,6 +80,21 @@ CREATE TABLE tool_environment_variables (
     PRIMARY KEY (tev_tol_id, tev_key),
     FOREIGN KEY (tev_tol_id) REFERENCES tools(tol_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS tool_resources (
+    tre_tol_id VARCHAR(80) NOT NULL,
+    tre_resource_name VARCHAR(240) NOT NULL,
+    tre_resource_description VARCHAR(4000),
+    created_by VARCHAR(80),
+    last_updated_by VARCHAR(80),
+    creation_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated_dt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tre_tol_id, tre_resource_name),
+    FOREIGN KEY (tre_tol_id) REFERENCES tools(tol_id) ON DELETE CASCADE
+);
+
+-- Create index for better performance
+CREATE INDEX IF NOT EXISTS idx_tool_resources_tool ON tool_resources(tre_tol_id);
 
 -- Table creation for Knowledge Base
 CREATE TABLE knowledge_base_details (
@@ -178,6 +194,7 @@ CREATE TABLE chat_messages (
 CREATE INDEX idx_lookup_details_type ON lookup_details(lkd_lkt_type);
 CREATE INDEX idx_llm_config_file ON llm_config(llc_fls_id);
 CREATE INDEX idx_tool_env_vars_tool ON tool_environment_variables(tev_tol_id);
+CREATE INDEX idx_tool_resources_tool ON tool_resources(tre_tol_id);
 CREATE INDEX idx_knowledge_base_docs_knb ON knowledge_base_documents(kbd_knb_id);
 CREATE INDEX idx_knowledge_base_docs_fls ON knowledge_base_documents(kbd_fls_id);
 CREATE INDEX idx_agents_llm ON agents(agt_llc_id);

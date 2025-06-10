@@ -75,6 +75,39 @@
     min-height: 24px;
 }
 
+.agent-counts {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tools-count,
+.rag-count {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #666;
+    font-size: 14px;
+}
+
+.tools-count img,
+.rag-count img {
+    width: 16px;
+    height: 16px;
+    opacity: 0.7;
+}
+
+.loading-counts {
+    color: #888;
+    font-style: italic;
+}
+
+.error-counts {
+    color: #dc3545;
+    font-style: italic;
+    font-size: 12px;
+}
+
 /* Agents Modal Styles */
 .modal {
     position: fixed;

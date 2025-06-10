@@ -362,6 +362,7 @@ class ToolUpdate(BaseModel):
 
 class ToolResponse(ToolBase, CommonModelConfig):
     id: str = Field(..., alias="tol_id", description="Unique identifier for the tool")
+    mcpFunctionCount: Optional[int] = Field(None, alias="tol_mcp_function_count", description="Total number of MCP functions available for this tool")
     createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this tool")
     creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the tool was created")
     lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this tool")
@@ -418,10 +419,50 @@ class ToolEnvironmentVariableBulkResponse(BaseModel):
     )
 
 
-# Lookup Type Schemas
-class LookupTypeBase(BaseModel):
-    typeCode: str = Field(..., alias="lkt_type", description="Unique type code for the lookup category")
-    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type category")
+# Tool Resource Schemas
+class ToolResourceBase(BaseModel):
+    resourceName: str = Field(..., alias="tre_resource_name", description="Resource name from the tool configuration")
+    resourceDescription: Optional[str] = Field(None, alias="tre_resource_description", description="Description of the resource")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "resourceName": "get_weather",
+                "resourceDescription": "Retrieves current weather information for a given location"
+            }
+        }
+    )
+
+
+class ToolResourceCreate(ToolResourceBase):
+    tool: str = Field(..., alias="tre_tol_id", description="ID of the tool that provides this resource")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "tool": "tool-01",
+                "resourceName": "get_weather",
+                "resourceDescription": "Retrieves current weather information for a given location"
+            }
+        }
+    )
+
+
+class ToolResourceResponse(ToolResourceBase, CommonModelConfig):
+    tool: str = Field(..., alias="tre_tol_id", description="ID of the tool that provides this resource")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this resource")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the resource was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this resource")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the resource was last updated")
+
+
+class ToolResourceBulkResponse(BaseModel):
+    success: List[ToolResourceResponse] = Field(..., description="Successfully created tool resources")
+    errors: List[Dict[str, str]] = Field(..., description="Errors encountered during creation")
     
     model_config = ConfigDict(
         populate_by_name=True,
@@ -429,114 +470,11 @@ class LookupTypeBase(BaseModel):
     )
 
 
-class LookupTypeCreate(LookupTypeBase):
-    pass
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "typeCode": "PROVIDER_TYPE_CD",
-                "description": "LLM Provider Type"
-            }
-        }
-    )
-
-
-class LookupTypeUpdate(BaseModel):
-    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type category")
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "description": "Updated LLM Provider Type description"
-            }
-        }
-    )
-
-
-class LookupTypeResponse(LookupTypeBase, CommonModelConfig):
-    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup type")
-    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup type was created")
-    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup type")
-    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup type was last updated")
-
-    def model_dump(self, **kwargs):
-        # Force by_alias=False to use field names instead of aliases
-        kwargs.setdefault('by_alias', False)
-        return super().model_dump(**kwargs)
-    
-    def model_dump_json(self, **kwargs):
-        # Force by_alias=False for JSON serialization too
-        kwargs.setdefault('by_alias', False)
-        return super().model_dump_json(**kwargs)
-
-
-# Lookup Detail Schemas
-class LookupDetailBase(BaseModel):
-    code: str = Field(..., alias="lkd_code", description="Unique code within the lookup type")
-    description: Optional[str] = Field(None, alias="lkd_description", description="Description of this lookup value")
-    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Optional sub-classification code")
-    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for displaying lookup values")
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True
-    )
-
-
-class LookupDetailCreate(LookupDetailBase):
-    typeCode: str = Field(..., alias="lkd_lkt_type", description="Reference to the lookup type this detail belongs to")
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "typeCode": "PROVIDER_TYPE_CD",
-                "code": "OPENAI",
-                "description": "OpenAI LLM Provider",
-                "subCode": None,
-                "sortOrder": 1
-            }
-        }
-    )
-
-
-class LookupDetailUpdate(BaseModel):
-    description: Optional[str] = Field(None, alias="lkd_description", description="Description of this lookup value")
-    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Optional sub-classification code")
-    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for displaying lookup values")
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "description": "Updated OpenAI LLM Provider description",
-                "subCode": "GPT",
-                "sortOrder": 2
-            }
-        }
-    )
-
-
-class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
-    typeCode: str = Field(..., alias="lkd_lkt_type", description="Reference to the lookup type this detail belongs to")
-    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup detail")
-    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup detail was created")
-    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup detail")
-    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup detail was last updated")
-
-
-# File Store Schemas
+# FileStore Schemas
 class FileStoreBase(BaseModel):
-    sourceTypeCode: str = Field(..., alias="fls_source_type_cd", description="Source type code identifying the origin of the file")
-    sourceId: str = Field(..., alias="fls_source_id", description="Source identifier linking to the originating entity")
-    fileName: str = Field(..., alias="fls_file_name", description="Name of the stored file")
+    sourceTypeCode: str = Field(..., alias="fls_source_type_cd", description="Source type code for the file (e.g., 'KB' for Knowledge Base, 'LLM' for LLM Config)")
+    sourceId: str = Field(..., alias="fls_source_id", description="ID of the source entity that owns this file")
+    fileName: str = Field(..., alias="fls_file_name", description="Original name of the uploaded file")
     
     model_config = ConfigDict(
         populate_by_name=True,
@@ -552,9 +490,9 @@ class FileStoreCreate(FileStoreBase):
         from_attributes=True,
         json_schema_extra={
             "example": {
-                "sourceTypeCode": "DOC",
-                "sourceId": "kb-001",
-                "fileName": "sample_document.pdf",
+                "sourceTypeCode": "KB",
+                "sourceId": "kb-01",
+                "fileName": "document.pdf",
                 "fileContent": "binary_file_content_here"
             }
         }
@@ -562,9 +500,9 @@ class FileStoreCreate(FileStoreBase):
 
 
 class FileStoreUpdate(BaseModel):
-    sourceTypeCode: Optional[str] = Field(None, alias="fls_source_type_cd", description="Source type code identifying the origin of the file")
-    sourceId: Optional[str] = Field(None, alias="fls_source_id", description="Source identifier linking to the originating entity")
-    fileName: Optional[str] = Field(None, alias="fls_file_name", description="Name of the stored file")
+    sourceTypeCode: Optional[str] = Field(None, alias="fls_source_type_cd", description="Source type code for the file")
+    sourceId: Optional[str] = Field(None, alias="fls_source_id", description="ID of the source entity that owns this file")
+    fileName: Optional[str] = Field(None, alias="fls_file_name", description="Original name of the uploaded file")
     fileContent: Optional[bytes] = Field(None, alias="fls_file_content", description="Binary content of the file")
     
     model_config = ConfigDict(
@@ -572,30 +510,38 @@ class FileStoreUpdate(BaseModel):
         from_attributes=True,
         json_schema_extra={
             "example": {
+                "sourceTypeCode": "KB",
+                "sourceId": "kb-02",
                 "fileName": "updated_document.pdf",
-                "sourceTypeCode": "DOC"
+                "fileContent": "updated_binary_file_content_here"
             }
         }
     )
 
 
 class FileStoreResponse(FileStoreBase, CommonModelConfig):
-    id: str = Field(..., alias="fls_id", description="Unique identifier for the file store record")
-    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this file store record")
-    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the file store record was created")
-    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this file store record")
-    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the file store record was last updated")
+    id: str = Field(..., alias="fls_id", description="Unique identifier for the file")
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who uploaded this file")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the file was uploaded")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this file")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the file was last updated")
 
 
 class FileStoreContentResponse(FileStoreResponse):
     fileContent: bytes = Field(..., alias="fls_file_content", description="Binary content of the file")
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        use_enum_values=True,
+        json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
+    )
 
 
-# Chat Schemas
-class ChatSessionBase(BaseModel):
-    name: str = Field(..., alias="cht_name", description="Name of the chat session")
-    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session")
-    agentId: str = Field(..., alias="cht_agt_id", description="ID of the agent associated with this chat session")
+# Lookup Schemas
+class LookupTypeBase(BaseModel):
+    typeCode: str = Field(..., alias="lkt_type", description="Type identifier for the lookup category")
+    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type")
     
     model_config = ConfigDict(
         populate_by_name=True,
@@ -603,7 +549,7 @@ class ChatSessionBase(BaseModel):
     )
 
 
-class ChatSessionCreate(ChatSessionBase):
+class LookupTypeCreate(LookupTypeBase):
     pass
     
     model_config = ConfigDict(
@@ -611,43 +557,42 @@ class ChatSessionCreate(ChatSessionBase):
         from_attributes=True,
         json_schema_extra={
             "example": {
-                "name": "Customer Support Chat",
-                "description": "Chat session for customer support",
-                "agentId": "agent-01"
+                "typeCode": "PROVIDER_TYPE",
+                "description": "LLM Provider Types"
             }
         }
     )
 
 
-class ChatSessionUpdate(BaseModel):
-    name: Optional[str] = Field(None, alias="cht_name", description="Name of the chat session")
-    description: Optional[str] = Field(None, alias="cht_description", description="Description of the chat session")
-    agentId: Optional[str] = Field(None, alias="cht_agt_id", description="ID of the agent associated with this chat session")
+class LookupTypeUpdate(BaseModel):
+    typeCode: Optional[str] = Field(None, alias="lkt_type", description="Type identifier for the lookup category")
+    description: Optional[str] = Field(None, alias="lkt_description", description="Description of the lookup type")
     
     model_config = ConfigDict(
         populate_by_name=True,
         from_attributes=True,
         json_schema_extra={
             "example": {
-                "name": "Updated Customer Support Chat",
-                "description": "Updated description for chat session"
+                "typeCode": "PROVIDER_TYPE",
+                "description": "Updated LLM Provider Types"
             }
         }
     )
 
 
-class ChatSessionResponse(ChatSessionBase, CommonModelConfig):
-    id: str = Field(..., alias="cht_id", description="Unique identifier for the chat session")
-    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the chat session")
-    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the chat session was created")
-    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the chat session")
-    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the chat session was last updated")
+class LookupTypeResponse(LookupTypeBase, CommonModelConfig):
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup type")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup type was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup type")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup type was last updated")
 
 
-class ChatMessageBase(BaseModel):
-    sessionId: str = Field(..., alias="msg_cht_id", description="ID of the chat session this message belongs to")
-    agentName: str = Field(..., alias="msg_agent_name", description="Name of the agent handling this message")
-    content: List[Dict] = Field(..., alias="msg_content", description="Array of message content objects")
+class LookupDetailBase(BaseModel):
+    typeCode: str = Field(..., alias="lkd_lkt_type", description="Type identifier that this detail belongs to")
+    code: str = Field(..., alias="lkd_code", description="Code for this lookup detail")
+    description: Optional[str] = Field(None, alias="lkd_description", description="Description of the lookup detail")
+    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Sub-code for additional categorization")
+    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for display purposes")
     
     model_config = ConfigDict(
         populate_by_name=True,
@@ -655,7 +600,7 @@ class ChatMessageBase(BaseModel):
     )
 
 
-class ChatMessageCreate(ChatMessageBase):
+class LookupDetailCreate(LookupDetailBase):
     pass
     
     model_config = ConfigDict(
@@ -663,28 +608,40 @@ class ChatMessageCreate(ChatMessageBase):
         from_attributes=True,
         json_schema_extra={
             "example": {
-                "sessionId": "chat-session-01",
-                "agentName": "Support Assistant",
-                "content": [
-                    {"type": "text", "text": "Hello, how can I help you today?"}
-                ]
+                "typeCode": "PROVIDER_TYPE",
+                "code": "OPENAI",
+                "description": "OpenAI Provider",
+                "subCode": None,
+                "sortOrder": 1
             }
         }
     )
 
 
-class ChatMessageUpdate(BaseModel):
-    content: Optional[List[Dict]] = Field(None, alias="msg_content", description="Array of message content objects")
+class LookupDetailUpdate(BaseModel):
+    typeCode: Optional[str] = Field(None, alias="lkd_lkt_type", description="Type identifier that this detail belongs to")
+    code: Optional[str] = Field(None, alias="lkd_code", description="Code for this lookup detail")
+    description: Optional[str] = Field(None, alias="lkd_description", description="Description of the lookup detail")
+    subCode: Optional[str] = Field(None, alias="lkd_sub_code", description="Sub-code for additional categorization")
+    sortOrder: Optional[int] = Field(None, alias="lkd_sort", description="Sort order for display purposes")
     
     model_config = ConfigDict(
         populate_by_name=True,
-        from_attributes=True
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "typeCode": "PROVIDER_TYPE",
+                "code": "OPENAI",
+                "description": "Updated OpenAI Provider",
+                "subCode": "GPT",
+                "sortOrder": 1
+            }
+        }
     )
 
 
-class ChatMessageResponse(ChatMessageBase, CommonModelConfig):
-    id: str = Field(..., alias="msg_id", description="Unique identifier for the chat message")
-    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created the message")
-    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the message was created")
-    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated the message")
-    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the message was last updated")
+class LookupDetailResponse(LookupDetailBase, CommonModelConfig):
+    createdBy: Optional[str] = Field(None, alias="created_by", description="Username of the person who created this lookup detail")
+    creationDt: Optional[datetime] = Field(None, alias="creation_dt", description="Timestamp when the lookup detail was created")
+    lastUpdatedBy: Optional[str] = Field(None, alias="last_updated_by", description="Username of the person who last updated this lookup detail")
+    lastUpdatedDt: Optional[datetime] = Field(None, alias="last_updated_dt", description="Timestamp when the lookup detail was last updated")
