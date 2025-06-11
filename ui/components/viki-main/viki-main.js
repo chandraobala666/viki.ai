@@ -32,8 +32,14 @@ export class VikiMain extends BaseComponent {
 
         // Listen for navigation change events
         this.addEventListener('viki-nav-change', (event) => {
-            const { option } = event.detail;
-            this.handleNavigationChange(shadowRoot, option);
+            const { option, clearSession } = event.detail;
+            if (clearSession && option === 'chat') {
+                // Clear session and navigate to chat without session
+                this.currentChatSession = null;
+                this.handleNavigationChange(shadowRoot, option);
+            } else {
+                this.handleNavigationChange(shadowRoot, option);
+            }
         });
 
         // Listen for chat session change events
@@ -69,13 +75,16 @@ export class VikiMain extends BaseComponent {
         // Update current chat session if provided
         if (sessionId) {
             this.currentChatSession = sessionId;
+        } else if (option === 'chat') {
+            // For chat navigation without sessionId, clear current session
+            this.currentChatSession = null;
         } else if (option !== 'chat') {
             // Clear chat session when navigating away from chat
             this.currentChatSession = null;
         }
         
-        this.updateURL(option, sessionId);
-        this.loadView(shadowRoot, option, sessionId);
+        this.updateURL(option, this.currentChatSession);
+        this.loadView(shadowRoot, option, this.currentChatSession);
     }
 
     async loadView(shadowRoot, viewType, sessionId = null) {

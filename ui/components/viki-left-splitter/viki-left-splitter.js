@@ -27,6 +27,7 @@ class VikiLeftSplitter extends BaseComponent {
             this.setupEventListeners(shadowRoot);
             this.setDefaultActiveOption(shadowRoot);
             await this.loadChatSessions();
+            this.setupDocumentEventListeners();
             this._isInitialized = true;
         }
         return shadowRoot;
@@ -70,6 +71,20 @@ class VikiLeftSplitter extends BaseComponent {
                 this.createNewChatSession();
             });
         }
+    }
+
+    setupDocumentEventListeners() {
+        // Listen for new chat session creation from chat canvas
+        document.addEventListener('viki-chat-session-created', async (event) => {
+            const { sessionId } = event.detail;
+            console.log('🚀 Left splitter received chat session created:', sessionId);
+            
+            // Reload chat sessions to include the new one
+            await this.loadChatSessions();
+            
+            // Automatically select the new session
+            this.selectChatSession(sessionId);
+        });
     }
 
     setDefaultActiveOption(shadowRoot) {
@@ -124,16 +139,23 @@ class VikiLeftSplitter extends BaseComponent {
         
         // Special handling for chat navigation
         if (newOption === 'chat') {
-            // If there's an active chat session and we're clicking on chat, don't change anything
-            if (this.activeChatSession) {
-                // Just update the UI to show chat as active
-                allNavItems.forEach(item => {
+            // Clear any active chat session when clicking on Chat nav item
+            this.activeChatSession = null;
+            
+            // Clear active session in UI
+            const shadowRoot = this.shadowRoot;
+            if (shadowRoot) {
+                const sessionItems = shadowRoot.querySelectorAll('.session-item');
+                sessionItems.forEach(item => {
                     item.classList.remove('active');
                 });
-                clickedItem.classList.add('active');
-                this.activeOption = newOption;
-                return; // Don't dispatch nav change event to preserve current session
             }
+            
+            // Dispatch event to clear chat and show welcome message
+            this.dispatchEvent(new CustomEvent('viki-chat-session-cleared', {
+                bubbles: true,
+                composed: true
+            }));
         }
         
         // Remove active class from all items
@@ -148,7 +170,19 @@ class VikiLeftSplitter extends BaseComponent {
         this.activeOption = newOption;
         
         // Dispatch custom event for parent components
-        this.dispatchNavChangeEvent(this.activeOption);
+        // For chat, we dispatch without sessionId to clear the URL parameter
+        if (newOption === 'chat') {
+            this.dispatchEvent(new CustomEvent('viki-nav-change', {
+                bubbles: true,
+                composed: true,
+                detail: {
+                    option: newOption,
+                    clearSession: true  // Signal to clear session from URL
+                }
+            }));
+        } else {
+            this.dispatchNavChangeEvent(this.activeOption);
+        }
     }
 
     dispatchNavChangeEvent(option) {
@@ -297,48 +331,38 @@ class VikiLeftSplitter extends BaseComponent {
     }
 
     async createNewChatSession() {
-        try {
-            // First, get available agents
-            const agentsResponse = await window.apiMethods.get('/api/0.1.0/agents/', {
-                baseUrl: 'http://localhost:8080'
-            });
+        // Navigate to chat without any session - this will show the welcome message
+        const shadowRoot = this.shadowRoot;
+        if (!shadowRoot) return;
 
-            if (agentsResponse.status !== 200 || !agentsResponse.data || agentsResponse.data.length === 0) {
-                alert('No agents available. Please create an agent first.');
-                return;
+        // Clear any active chat session
+        this.activeChatSession = null;
+        
+        // Clear active session in UI
+        const sessionItems = shadowRoot.querySelectorAll('.session-item');
+        sessionItems.forEach(item => {
+            item.classList.remove('active');
+        });
+
+        // Navigate to chat view
+        this.activeOption = 'chat';
+        
+        // Update nav items to show chat as active
+        const navItems = shadowRoot.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.option === 'chat') {
+                item.classList.add('active');
             }
+        });
 
-            // For now, use the first available agent
-            // In a real implementation, you might want to show an agent selection dialog
-            const firstAgent = agentsResponse.data[0];
-            const timestamp = new Date().toLocaleString();
-            const sessionName = `Chat with ${firstAgent.name} - ${timestamp}`;
-
-            const sessionData = {
-                name: sessionName,
-                agent: firstAgent.id
-            };
-
-            console.log('🚀 Creating new chat session...');
-            const response = await window.apiMethods.post('/api/0.1.0/chat/sessions', sessionData, {
-                baseUrl: 'http://localhost:8080'
-            });
-
-            if (response.status >= 200 && response.status < 300) {
-                console.log('✅ Chat session created successfully');
-                await this.loadChatSessions();
-                
-                // Automatically select the new session
-                const newSessionId = response.data.id;
-                this.selectChatSession(newSessionId);
-            } else {
-                console.error('Failed to create chat session');
-                alert('Failed to create chat session');
-            }
-        } catch (error) {
-            console.error('Error creating chat session:', error);
-            alert('Failed to create chat session: ' + error.message);
-        }
+        // Dispatch event to show chat with welcome message
+        this.dispatchEvent(new CustomEvent('viki-chat-session-cleared', {
+            bubbles: true,
+            composed: true
+        }));
+        
+        this.dispatchNavChangeEvent('chat');
     }
 
     selectChatSession(sessionId) {

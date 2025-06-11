@@ -10,3 +10,6 @@ sqlite3 service/db/sqllite/data/viki_ai.db
 cd service
 uv init viki_ai
 uv run -m viki_ai
+
+# Python Run UI
+python3 -m http.server 5500

@@ -8,14 +8,27 @@ class VikiChatCanvas extends BaseComponent {
         this.messages = [];
         this.isTyping = false;
         this.currentChatSession = null;
+        console.log('🚀 VikiChatCanvas constructor called');
+    }
+
+    // Getter to ensure we always access the correct shadow root
+    get shadowRoot() {
+        return this._shadowRoot || super.shadowRoot;
     }
 
     async connectedCallback() {
+        console.log('🚀 VikiChatCanvas connectedCallback called');
         try {
+            console.log('🚀 Calling super.connectedCallback...');
             const shadowRoot = await super.connectedCallback();
+            console.log('✅ Super connectedCallback returned:', shadowRoot);
+            
             if (shadowRoot) {
-                this.setupEventListeners();
+                console.log('🚀 Setting up event listeners...');
+                this.setupEventListeners(shadowRoot);
+                console.log('🚀 Setting up chat session event listeners...');
                 this.setupChatSessionEventListeners();
+                console.log('🚀 Loading agents...');
                 await this.loadAgents();
                 
                 // Check if there's a session ID in the data attribute
@@ -23,18 +36,31 @@ class VikiChatCanvas extends BaseComponent {
                 if (sessionId) {
                     console.log('🚀 Chat canvas initializing with session ID:', sessionId);
                     await this.loadChatSession(sessionId);
+                } else {
+                    // Show welcome message for new chat
+                    this.showWelcomeMessage();
                 }
+                console.log('✅ VikiChatCanvas initialization complete');
+            } else {
+                console.error('❌ No shadowRoot returned from super.connectedCallback');
             }
         } catch (error) {
-            console.error('Error in VikiChatCanvas connectedCallback:', error);
+            console.error('❌ Error in VikiChatCanvas connectedCallback:', error);
         }
     }
 
-    setupEventListeners() {
-        const agentSelect = this.shadowRoot.querySelector('#agentSelect');
-        const messageInput = this.shadowRoot.querySelector('#messageInput');
-        const sendButton = this.shadowRoot.querySelector('#sendButton');
-        const chatFooter = this.shadowRoot.querySelector('#chatFooter');
+    setupEventListeners(shadowRoot) {
+        console.log('🚀 Setting up event listeners...');
+        const agentSelect = shadowRoot.querySelector('#agentSelect');
+        const messageInput = shadowRoot.querySelector('#messageInput');
+        const sendButton = shadowRoot.querySelector('#sendButton');
+        const chatFooter = shadowRoot.querySelector('#chatFooter');
+
+        console.log('🔍 Elements found:');
+        console.log('  agentSelect:', agentSelect);
+        console.log('  messageInput:', messageInput);
+        console.log('  sendButton:', sendButton);
+        console.log('  chatFooter:', chatFooter);
 
         // Agent selection handler
         agentSelect?.addEventListener('change', (e) => {
@@ -43,13 +69,16 @@ class VikiChatCanvas extends BaseComponent {
 
         // Message input handlers
         messageInput?.addEventListener('keypress', (e) => {
+            console.log('🔍 Keypress event detected:', e.key);
             if (e.key === 'Enter' && !e.shiftKey) {
+                console.log('🚀 Enter key pressed, calling sendMessage...');
                 e.preventDefault();
                 this.sendMessage();
             }
         });
 
         sendButton?.addEventListener('click', () => {
+            console.log('🚀 Send button clicked, calling sendMessage...');
             this.sendMessage();
         });
     }
@@ -160,9 +189,9 @@ class VikiChatCanvas extends BaseComponent {
             this.enableChatInput();
             this.loadAgentCapabilities(agentId);
             
-            // Only initialize a new chat session if we don't have one active
+            // Always show agent introduction when selecting an agent for new chat
             if (!this.currentChatSession) {
-                this.initializeChatSession();
+                this.showAgentIntroduction();
             }
         }
     }
@@ -242,28 +271,6 @@ class VikiChatCanvas extends BaseComponent {
                 </div>
             </div>
         `;
-    }
-
-    initializeChatSession() {
-        const chatMessages = this.shadowRoot.querySelector('#chatMessages');
-        if (!chatMessages || !this.selectedAgent) return;
-
-        // Clear messages and show agent introduction
-        this.messages = [];
-        chatMessages.innerHTML = `
-            <div class="bot-message">
-                <div class="message-avatar">
-                    <img src="./ui/assets/chat/bot.svg" alt="Bot" width="32" height="32">
-                </div>
-                <div class="message-content">
-                    <p>Hello! I'm <strong>${this.selectedAgent.name}</strong>. ${this.selectedAgent.description || 'How can I help you today?'}</p>
-                </div>
-            </div>
-        `;
-
-        // Focus on input
-        const messageInput = this.shadowRoot.querySelector('#messageInput');
-        if (messageInput) messageInput.focus();
     }
 
     async loadChatSession(sessionId) {
@@ -399,6 +406,8 @@ class VikiChatCanvas extends BaseComponent {
         const chatMessages = this.shadowRoot.querySelector('#chatMessages');
         if (!chatMessages) return;
 
+        // Clear messages first
+        this.messages = [];
         chatMessages.innerHTML = `
             <div class="bot-message">
                 <div class="message-avatar">
@@ -409,6 +418,10 @@ class VikiChatCanvas extends BaseComponent {
                 </div>
             </div>
         `;
+
+        // Focus on input
+        const messageInput = this.shadowRoot.querySelector('#messageInput');
+        if (messageInput) messageInput.focus();
     }
 
     clearChatSession() {
@@ -434,35 +447,94 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     async sendMessage() {
+        console.log('🚀 sendMessage called');
         const messageInput = this.shadowRoot.querySelector('#messageInput');
-        if (!messageInput || !this.selectedAgent || !this.currentChatSession) return;
+        console.log('messageInput:', messageInput);
+        console.log('selectedAgent:', this.selectedAgent);
+        console.log('currentChatSession:', this.currentChatSession);
+        
+        if (!messageInput || !this.selectedAgent) {
+            console.log('❌ Missing required elements for sending message');
+            return;
+        }
 
         const messageText = messageInput.value.trim();
-        if (!messageText) return;
+        console.log('messageText:', messageText);
+        if (!messageText) {
+            console.log('❌ No message text');
+            return;
+        }
+
+        // If no current chat session, create one with the first 30 characters of the message
+        if (!this.currentChatSession) {
+            console.log('🚀 Creating new chat session for first message...');
+            const sessionName = messageText.length > 30 ? messageText.substring(0, 30) + '...' : messageText;
+            
+            try {
+                const sessionData = {
+                    name: sessionName,
+                    agent: this.selectedAgent.id
+                };
+
+                const response = await window.apiMethods.post('/api/0.1.0/chat/sessions', sessionData, {
+                    baseUrl: 'http://localhost:8080'
+                });
+
+                if (response.status >= 200 && response.status < 300) {
+                    this.currentChatSession = response.data;
+                    console.log('✅ New chat session created:', this.currentChatSession);
+                    
+                    // Dispatch event to update the left splitter
+                    this.dispatchEvent(new CustomEvent('viki-chat-session-created', {
+                        bubbles: true,
+                        composed: true,
+                        detail: { sessionId: this.currentChatSession.id }
+                    }));
+                } else {
+                    console.error('Failed to create chat session');
+                    alert('Failed to create chat session');
+                    return;
+                }
+            } catch (error) {
+                console.error('Error creating chat session:', error);
+                alert('Failed to create chat session: ' + error.message);
+                return;
+            }
+        }
 
         // Add user message to chat
+        console.log('🚀 Adding user message to chat...');
         this.addMessage('user', messageText);
         messageInput.value = '';
 
         // Save user message to database
+        console.log('🚀 Saving user message to database...');
         await this.saveMessageToDatabase('USER', messageText);
 
         // Show typing indicator
+        console.log('🚀 Showing typing indicator...');
         this.showTypingIndicator();
 
         try {
             // Here you would typically call your chat API
             // For now, we'll simulate a response
+            console.log('🚀 Starting simulateAgentResponse...');
             const agentResponse = await this.simulateAgentResponse(messageText);
+            console.log('✅ Got agent response:', agentResponse);
             
             // Hide typing indicator before showing response
+            console.log('🚀 Hiding typing indicator...');
             this.hideTypingIndicator();
             
             // Add the bot response message
+            console.log('🚀 Adding bot response to chat...');
             this.addMessage('bot', agentResponse);
+            console.log('✅ Bot response added to chat');
             
             // Save agent response to database
+            console.log('🚀 Saving bot response to database...');
             await this.saveMessageToDatabase('AI', agentResponse);
+            console.log('✅ Bot response saved to database');
         } catch (error) {
             console.error('Error sending message:', error);
             this.hideTypingIndicator();
@@ -509,8 +581,13 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     addMessage(type, content) {
+        console.log(`🚀 addMessage called with type: ${type}, content: ${content}`);
         const chatMessages = this.shadowRoot.querySelector('#chatMessages');
-        if (!chatMessages) return;
+        console.log('chatMessages element:', chatMessages);
+        if (!chatMessages) {
+            console.log('❌ No chatMessages element found in addMessage');
+            return;
+        }
 
         const messageDiv = document.createElement('div');
         messageDiv.className = type === 'user' ? 'user-message' : 'bot-message';
@@ -527,7 +604,9 @@ class VikiChatCanvas extends BaseComponent {
             </div>
         `;
 
+        console.log('🚀 Appending message to DOM...');
         chatMessages.appendChild(messageDiv);
+        console.log('✅ Message appended to DOM');
         this.scrollToBottom();
 
         // Store message in local array
@@ -536,11 +615,17 @@ class VikiChatCanvas extends BaseComponent {
             content,
             timestamp: new Date()
         });
+        console.log(`✅ ${type} message stored in local array`);
     }
 
     showTypingIndicator() {
+        console.log('🚀 showTypingIndicator called');
         const chatMessages = this.shadowRoot.querySelector('#chatMessages');
-        if (!chatMessages) return;
+        console.log('chatMessages element:', chatMessages);
+        if (!chatMessages) {
+            console.log('❌ No chatMessages element found');
+            return;
+        }
 
         const typingDiv = document.createElement('div');
         typingDiv.className = 'bot-message typing-indicator';
@@ -560,7 +645,9 @@ class VikiChatCanvas extends BaseComponent {
             </div>
         `;
 
+        console.log('🚀 Appending typing indicator to DOM...');
         chatMessages.appendChild(typingDiv);
+        console.log('✅ Typing indicator appended');
         this.scrollToBottom();
         this.isTyping = true;
     }
@@ -574,8 +661,11 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     async simulateAgentResponse(userMessage) {
+        console.log('🚀 simulateAgentResponse called with:', userMessage);
         // Simulate processing time
+        console.log('⏳ Starting delay...');
         await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+        console.log('✅ Delay completed');
 
         // Generate a simple response (in a real implementation, this would call your chat API)
         let response = `I understand you said: "${userMessage}". `;
@@ -590,6 +680,7 @@ class VikiChatCanvas extends BaseComponent {
         
         response += "How else can I assist you?";
 
+        console.log('✅ Generated response:', response);
         return response;
     }
 
