@@ -9,6 +9,9 @@ class VikiAgentsCanvas extends BaseComponent {
         this.selectedTools = new Set();
         this.selectedKnowledgeBases = new Set();
         this.editingAgent = null;
+        // Track original relationships when editing an agent
+        this.originalToolIds = new Set();
+        this.originalKnowledgeBaseIds = new Set();
     }
 
     async connectedCallback() {
@@ -538,6 +541,8 @@ class VikiAgentsCanvas extends BaseComponent {
         // Clear previous selections
         this.selectedTools.clear();
         this.selectedKnowledgeBases.clear();
+        this.originalToolIds.clear();
+        this.originalKnowledgeBaseIds.clear();
         this.editingAgent = agent;
 
         if (agent) {
@@ -576,6 +581,8 @@ class VikiAgentsCanvas extends BaseComponent {
 
     async loadAgentRelationships(agentId) {
         try {
+            console.log(`🔄 Loading agent relationships for agent: ${agentId}`);
+            
             // Load agent tools
             const toolsResponse = await window.apiMethods.get('/api/0.1.0/agent-relationships/tools', {
                 baseUrl: 'http://localhost:8080'
@@ -583,7 +590,13 @@ class VikiAgentsCanvas extends BaseComponent {
             
             if (toolsResponse.status === 200) {
                 const agentTools = toolsResponse.data.filter(at => at.agent === agentId);
-                agentTools.forEach(at => this.selectedTools.add(at.tool));
+                console.log(`🔧 Found ${agentTools.length} existing tool relationships:`, agentTools);
+                
+                // Store both selected and original relationships
+                agentTools.forEach(at => {
+                    this.selectedTools.add(at.tool);
+                    this.originalToolIds.add(at.tool);
+                });
             }
 
             // Load agent knowledge bases
@@ -593,8 +606,17 @@ class VikiAgentsCanvas extends BaseComponent {
             
             if (kbResponse.status === 200) {
                 const agentKBs = kbResponse.data.filter(akb => akb.agent === agentId);
-                agentKBs.forEach(akb => this.selectedKnowledgeBases.add(akb.knowledgeBase));
+                console.log(`📚 Found ${agentKBs.length} existing knowledge base relationships:`, agentKBs);
+                
+                // Store both selected and original relationships
+                agentKBs.forEach(akb => {
+                    this.selectedKnowledgeBases.add(akb.knowledgeBase);
+                    this.originalKnowledgeBaseIds.add(akb.knowledgeBase);
+                });
             }
+
+            console.log(`📊 Current selected tools:`, Array.from(this.selectedTools));
+            console.log(`📊 Current selected KBs:`, Array.from(this.selectedKnowledgeBases));
 
             // Update displays
             this.renderToolsSearch();
@@ -664,7 +686,65 @@ class VikiAgentsCanvas extends BaseComponent {
 
     async saveAgentRelationships(agentId) {
         try {
-            // Save tool relationships
+            // When editing an agent, we need to handle both adding and removing relationships
+            
+            // 1. Get current relationships to determine what needs to be removed
+            let currentToolIds = new Set();
+            let currentKnowledgeBaseIds = new Set();
+            
+            if (this.editingAgent) {
+                // Load current relationships from the server
+                const toolsResponse = await window.apiMethods.get('/api/0.1.0/agent-relationships/tools', {
+                    baseUrl: 'http://localhost:8080'
+                });
+                
+                if (toolsResponse.status === 200) {
+                    const agentTools = toolsResponse.data.filter(at => at.agent === agentId);
+                    agentTools.forEach(at => currentToolIds.add(at.tool));
+                }
+
+                const kbResponse = await window.apiMethods.get('/api/0.1.0/agent-relationships/knowledge-bases', {
+                    baseUrl: 'http://localhost:8080'
+                });
+                
+                if (kbResponse.status === 200) {
+                    const agentKBs = kbResponse.data.filter(akb => akb.agent === agentId);
+                    agentKBs.forEach(akb => currentKnowledgeBaseIds.add(akb.knowledgeBase));
+                }
+            }
+
+            // 2. Remove relationships that are no longer selected
+            for (const toolId of currentToolIds) {
+                if (!this.selectedTools.has(toolId)) {
+                    try {
+                        await window.apiMethods.delete(`/api/0.1.0/agent-relationships/tools/${agentId}/${toolId}`, {
+                            baseUrl: 'http://localhost:8080'
+                        });
+                        console.log(`✅ Removed tool relationship: ${toolId}`);
+                    } catch (error) {
+                        if (error.status !== 404) { // Ignore if relationship doesn't exist
+                            console.warn(`Failed to remove tool relationship ${toolId}:`, error);
+                        }
+                    }
+                }
+            }
+
+            for (const kbId of currentKnowledgeBaseIds) {
+                if (!this.selectedKnowledgeBases.has(kbId)) {
+                    try {
+                        await window.apiMethods.delete(`/api/0.1.0/agent-relationships/knowledge-bases/${agentId}/${kbId}`, {
+                            baseUrl: 'http://localhost:8080'
+                        });
+                        console.log(`✅ Removed knowledge base relationship: ${kbId}`);
+                    } catch (error) {
+                        if (error.status !== 404) { // Ignore if relationship doesn't exist
+                            console.warn(`Failed to remove knowledge base relationship ${kbId}:`, error);
+                        }
+                    }
+                }
+            }
+
+            // 3. Add new tool relationships
             for (const toolId of this.selectedTools) {
                 try {
                     await window.apiMethods.post('/api/0.1.0/agent-relationships/tools', {
@@ -673,6 +753,7 @@ class VikiAgentsCanvas extends BaseComponent {
                     }, {
                         baseUrl: 'http://localhost:8080'
                     });
+                    console.log(`✅ Added tool relationship: ${toolId}`);
                 } catch (error) {
                     if (error.status !== 400) { // Ignore if already exists
                         throw error;
@@ -680,7 +761,7 @@ class VikiAgentsCanvas extends BaseComponent {
                 }
             }
 
-            // Save knowledge base relationships
+            // 4. Add new knowledge base relationships
             for (const kbId of this.selectedKnowledgeBases) {
                 try {
                     await window.apiMethods.post('/api/0.1.0/agent-relationships/knowledge-bases', {
@@ -689,6 +770,7 @@ class VikiAgentsCanvas extends BaseComponent {
                     }, {
                         baseUrl: 'http://localhost:8080'
                     });
+                    console.log(`✅ Added knowledge base relationship: ${kbId}`);
                 } catch (error) {
                     if (error.status !== 400) { // Ignore if already exists
                         throw error;

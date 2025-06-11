@@ -46,7 +46,7 @@ async def test_mcp_configuration(
         )
         
         # Test connection and count tools
-        async with stdio_client(server_params) as (read, write):
+        async with stdio_client(server_params) as (read, write):  # type: ignore
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 logging.info("MCP connection initialized successfully")

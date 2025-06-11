@@ -779,3 +779,42 @@ class ChatMessageResponse(ChatMessageBase):
         use_enum_values=True,
         json_encoders={datetime: lambda dt: dt.isoformat() if dt else None}
     )
+
+
+# Chat AI Request/Response schemas
+class ChatAIRequest(BaseModel):
+    """Schema for AI chat request"""
+    message: str = Field(..., description="User message to send to the AI")
+    chatSessionId: str = Field(..., description="ID of the chat session")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "Hello, can you help me with my account?",
+                "chatSessionId": "chat-session-123"
+            }
+        }
+    )
+
+
+class ChatAIResponse(BaseModel):
+    """Schema for AI chat response"""
+    success: bool = Field(..., description="Whether the AI request was successful")
+    response: Optional[str] = Field(None, description="AI response message")
+    error: Optional[str] = Field(None, description="Error message if request failed")
+    sessionId: str = Field(..., description="Chat session ID")
+    messageCount: Optional[int] = Field(None, description="Total number of messages in the session")
+    timestamp: Optional[str] = Field(None, description="Timestamp of the response")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "response": "Hello! I'm here to help you with your account. What specific information do you need?",
+                "error": None,
+                "sessionId": "chat-session-123",
+                "messageCount": 5,
+                "timestamp": "2025-06-11T14:30:45.123Z"
+            }
+        }
+    )

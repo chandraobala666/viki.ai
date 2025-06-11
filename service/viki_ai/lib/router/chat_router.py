@@ -6,14 +6,20 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
 import logging
+from datetime import datetime
+from datetime import datetime
 
 from ..model.chat import ChatSession, ChatMessage
+from ..model.agent import Agent
+from ..model.llm import LLMConfig
 from ..model.db_session import get_db
 from .schemas import (
     ChatSessionCreate, ChatSessionUpdate, ChatSessionResponse,
-    ChatMessageCreate, ChatMessageUpdate, ChatMessageResponse
+    ChatMessageCreate, ChatMessageUpdate, ChatMessageResponse,
+    ChatAIRequest, ChatAIResponse
 )
 from .response_utils import serialize_response, serialize_response_list
+from ..util.ai_chat_utility import AIChatUtility
 
 router = APIRouter(
     prefix="/chat",
@@ -328,4 +334,191 @@ def delete_chat_message(message_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error while deleting chat message: {str(e)}"
+        )
+
+
+@router.post("/ai-chat", response_model=ChatAIResponse)
+async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
+    """
+    Generate AI response for a chat message
+    
+    This endpoint uses the AI Chat Utility to generate intelligent responses.
+    It retrieves the chat session, agent configuration, LLM settings, and chat history,
+    then generates an AI response using the configured model and tools.
+    
+    - **message**: The user message to send to the AI
+    - **chatSessionId**: The ID of the chat session
+    
+    Returns:
+    - **success**: Whether the request was successful
+    - **response**: The AI-generated response
+    - **error**: Error message if the request failed
+    - **sessionId**: The chat session ID
+    - **messageCount**: Total messages in the session after processing
+    - **timestamp**: Timestamp of the response
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"Processing AI chat request for session: {request.chatSessionId}")
+        
+        # 1. Get chat session from database
+        chat_session = db.query(ChatSession).filter(ChatSession.cht_id == request.chatSessionId).first()
+        if chat_session is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chat session with ID {request.chatSessionId} not found"
+            )
+        
+        # 2. Get agent details
+        agent = db.query(Agent).filter(Agent.agt_id == chat_session.cht_agt_id).first()
+        if agent is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent with ID {chat_session.cht_agt_id} not found"
+            )
+        
+        # 3. Get LLM configuration
+        llm_config = db.query(LLMConfig).filter(LLMConfig.llc_id == agent.agt_llc_id).first()
+        if llm_config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"LLM configuration with ID {agent.agt_llc_id} not found"
+            )
+        
+        # 4. Get chat history (last 50 messages for context)
+        messages = db.query(ChatMessage).filter(
+            ChatMessage.msg_cht_id == request.chatSessionId
+        ).order_by(ChatMessage.creation_dt.asc()).limit(50).all()
+        
+        logger.info(f"Found {len(messages)} historical messages for context")
+        
+        # 5. Initialize AI Chat Utility with agent's configuration
+        # Map provider type codes to utility format
+        provider_mapping = {
+            'OPENAI': 'openai',
+            'OLLAMA': 'ollama',
+            'GROQ': 'groq',
+            'ANTHROPIC': 'anthropic',
+            'AZURE': 'azure',
+            'HUGGINGFACE': 'huggingface',
+            'OPENROUTER': 'openrouter'
+        }
+        
+        llm_provider = provider_mapping.get(llm_config.llc_provider_type_cd.upper(), 'ollama')
+        
+        # Create AI Chat Utility instance
+        chat_util = AIChatUtility(
+            llm_provider=llm_provider,
+            model_name=getattr(llm_config, 'llc_model_cd', ''),
+            api_key=getattr(llm_config, 'llc_api_key', None),
+            base_url=getattr(llm_config, 'llc_endpoint_url', None),
+            temperature=0.0,
+            system_prompt=getattr(agent, 'agt_system_prompt', None)
+        )
+        
+        # 6. Build conversation history for AI context
+        # Convert database messages to AI utility format
+        conversation_history = []
+        system_prompt = getattr(agent, 'agt_system_prompt', None)
+        if system_prompt:
+            conversation_history.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        for msg in messages:
+            # Extract content from the message
+            msg_content = getattr(msg, 'msg_content', [])
+            if isinstance(msg_content, list) and len(msg_content) > 0:
+                content = msg_content[0].get('content', '') if isinstance(msg_content[0], dict) else str(msg_content[0])
+            else:
+                content = str(msg_content)
+            
+            msg_role = getattr(msg, 'msg_role', '')
+            role = "user" if msg_role == "USER" else "assistant"
+            conversation_history.append({
+                "role": role,
+                "content": content
+            })
+        
+        # Add current user message
+        conversation_history.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # 7. Manually set the conversation history in the AI utility
+        chat_util.message_history = conversation_history
+        chat_util.session_id = f"session_{request.chatSessionId}"
+        
+        logger.info(f"Generating AI response with {len(conversation_history)} messages in context")
+        
+        # 8. Generate AI response
+        ai_response = await chat_util.generate_response(
+            request.message,
+            include_history=True
+        )
+        
+        if not ai_response.get("success", False):
+            error_msg = ai_response.get("error", "Unknown error occurred")
+            logger.error(f"AI response generation failed: {error_msg}")
+            return ChatAIResponse(
+                success=False,
+                response=None,
+                error=error_msg,
+                sessionId=request.chatSessionId,
+                messageCount=len(messages),
+                timestamp=datetime.now().isoformat()
+            )
+        
+        # 9. Save user message to database
+        user_message_id = str(uuid.uuid4())
+        agent_name = getattr(agent, 'agt_name', 'Unknown Agent')
+        user_message = ChatMessage(
+            msg_id=user_message_id,
+            msg_cht_id=request.chatSessionId,
+            msg_agent_name=agent_name,
+            msg_role="USER",
+            msg_content=[{"role": "user", "content": request.message}]
+        )
+        db.add(user_message)
+        
+        # 10. Save AI response to database
+        ai_message_id = str(uuid.uuid4())
+        ai_message = ChatMessage(
+            msg_id=ai_message_id,
+            msg_cht_id=request.chatSessionId,
+            msg_agent_name=agent_name,
+            msg_role="AI",
+            msg_content=[{"role": "assistant", "content": ai_response["response"]}]
+        )
+        db.add(ai_message)
+        
+        db.commit()
+        
+        logger.info(f"AI response generated and saved successfully for session: {request.chatSessionId}")
+        
+        return ChatAIResponse(
+            success=True,
+            response=ai_response["response"],
+            error=None,
+            sessionId=request.chatSessionId,
+            messageCount=len(messages) + 2,  # +2 for user message and AI response
+            timestamp=ai_response.get("timestamp", datetime.now().isoformat())
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in AI chat: {str(e)}")
+        db.rollback()
+        return ChatAIResponse(
+            success=False,
+            response=None,
+            error=f"Internal server error: {str(e)}",
+            sessionId=request.chatSessionId,
+            messageCount=0,
+            timestamp=datetime.now().isoformat()
         )

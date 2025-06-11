@@ -507,19 +507,14 @@ class VikiChatCanvas extends BaseComponent {
         this.addMessage('user', messageText);
         messageInput.value = '';
 
-        // Save user message to database
-        console.log('🚀 Saving user message to database...');
-        await this.saveMessageToDatabase('USER', messageText);
-
         // Show typing indicator
         console.log('🚀 Showing typing indicator...');
         this.showTypingIndicator();
 
         try {
-            // Here you would typically call your chat API
-            // For now, we'll simulate a response
-            console.log('🚀 Starting simulateAgentResponse...');
-            const agentResponse = await this.simulateAgentResponse(messageText);
+            // Call the AI chat API which handles both AI response generation and database storage
+            console.log('🚀 Starting AI response generation...');
+            const agentResponse = await this.getAIResponse(messageText);
             console.log('✅ Got agent response:', agentResponse);
             
             // Hide typing indicator before showing response
@@ -531,17 +526,12 @@ class VikiChatCanvas extends BaseComponent {
             this.addMessage('bot', agentResponse);
             console.log('✅ Bot response added to chat');
             
-            // Save agent response to database
-            console.log('🚀 Saving bot response to database...');
-            await this.saveMessageToDatabase('AI', agentResponse);
-            console.log('✅ Bot response saved to database');
+            // Note: Messages are now saved to database by the AI API endpoint
         } catch (error) {
             console.error('Error sending message:', error);
             this.hideTypingIndicator();
             const errorMessage = 'Sorry, I encountered an error while processing your message. Please try again.';
             this.addMessage('bot', errorMessage);
-            // Save error message to database
-            await this.saveMessageToDatabase('AI', errorMessage);
         }
     }
 
@@ -658,30 +648,58 @@ class VikiChatCanvas extends BaseComponent {
             typingIndicator.remove();
         }
         this.isTyping = false;
-    }
-
-    async simulateAgentResponse(userMessage) {
-        console.log('🚀 simulateAgentResponse called with:', userMessage);
-        // Simulate processing time
-        console.log('⏳ Starting delay...');
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-        console.log('✅ Delay completed');
-
-        // Generate a simple response (in a real implementation, this would call your chat API)
-        let response = `I understand you said: "${userMessage}". `;
+    }    async getAIResponse(userMessage) {
+        console.log('🚀 getAIResponse called with:', userMessage);
         
-        if (this.selectedAgent.toolsCount > 0) {
-            response += `I have access to ${this.selectedAgent.toolsCount} tools to help you. `;
+        if (!this.currentChatSession) {
+            console.error('❌ No current chat session for AI response');
+            throw new Error('No active chat session');
         }
         
-        if (this.selectedAgent.ragCount > 0) {
-            response += `I can also reference ${this.selectedAgent.ragCount} knowledge base(s) for more detailed information. `;
+        try {
+            console.log('🚀 Calling AI chat API...');
+            const response = await window.apiMethods.post('/api/0.1.0/chat/ai-chat', {
+                message: userMessage,
+                chatSessionId: this.currentChatSession.id
+            }, {
+                baseUrl: 'http://localhost:8080'
+            });
+            
+            if (response.status >= 200 && response.status < 300 && response.data) {
+                const aiResponse = response.data;
+                
+                if (aiResponse.success && aiResponse.response) {
+                    console.log('✅ AI response received:', aiResponse.response);
+                    return aiResponse.response;
+                } else {
+                    console.error('❌ AI response failed:', aiResponse.error);
+                    throw new Error(aiResponse.error || 'AI response generation failed');
+                }
+            } else {
+                console.error('❌ API call failed:', response);
+                throw new Error('Failed to get AI response from server');
+            }
+        } catch (error) {
+            console.error('❌ Error calling AI chat API:', error);
+            // Fallback to original mock response for debugging
+            console.log('🔄 Falling back to mock response...');
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+            
+            let response = `I understand you said: "${userMessage}". `;
+            
+            if (this.selectedAgent.toolsCount > 0) {
+                response += `I have access to ${this.selectedAgent.toolsCount} tools to help you. `;
+            }
+            
+            if (this.selectedAgent.ragCount > 0) {
+                response += `I can also reference ${this.selectedAgent.ragCount} knowledge base(s) for more detailed information. `;
+            }
+            
+            response += "How else can I assist you? (Note: This is a fallback response due to an error with the AI service)";
+            
+            console.log('✅ Generated fallback response:', response);
+            return response;
         }
-        
-        response += "How else can I assist you?";
-
-        console.log('✅ Generated response:', response);
-        return response;
     }
 
     scrollToBottom() {

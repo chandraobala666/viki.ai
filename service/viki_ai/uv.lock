@@ -107,24 +107,6 @@ wheels = [
 ]
 
 [[package]]
-name = "anthropic"
-version = "0.54.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "distro" },
-    { name = "httpx" },
-    { name = "jiter" },
-    { name = "pydantic" },
-    { name = "sniffio" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/89/28/80cb9bb6e7ce77d404145b51da4257455805c17f0a6be528ff3286e3882f/anthropic-0.54.0.tar.gz", hash = "sha256:5e6f997d97ce8e70eac603c3ec2e7f23addeff953fbbb76b19430562bb6ba815", size = 312376, upload-time = "2025-06-11T02:46:27.642Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/b9/6ffb48e82c5e97b03cecee872d134a6b6666c2767b2d32ed709f3a60a8fe/anthropic-0.54.0-py3-none-any.whl", hash = "sha256:c1062a0a905daeec17ca9c06c401e4b3f24cb0495841d29d752568a1d4018d56", size = 288774, upload-time = "2025-06-11T02:46:25.578Z" },
-]
-
-[[package]]
 name = "anyio"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -792,20 +774,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fc/f9/a256609096a9fc7a1b3a6300a97000091efabdf21555a97988f93d4d9258/langchain-0.3.25.tar.gz", hash = "sha256:a1d72aa39546a23db08492d7228464af35c9ee83379945535ceef877340d2a3a", size = 10225045, upload-time = "2025-05-02T18:39:04.353Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/5c/5c0be747261e1f8129b875fa3bfea736bc5fe17652f9d5e15ca118571b6f/langchain-0.3.25-py3-none-any.whl", hash = "sha256:931f7d2d1eaf182f9f41c5e3272859cfe7f94fc1f7cef6b3e5a46024b4884c21", size = 1011008, upload-time = "2025-05-02T18:39:02.21Z" },
-]
-
-[[package]]
-name = "langchain-anthropic"
-version = "0.3.15"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anthropic" },
-    { name = "langchain-core" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/47/c5/c5cd0164e342812787c157a385e8a9529510a514a5fe6acb487e990e82b0/langchain_anthropic-0.3.15.tar.gz", hash = "sha256:e62de2b0175c1fcca49fc4cc1f8742a4ab2385f0b94b7df4533fd06d577efd36", size = 54218, upload-time = "2025-06-03T15:04:44.062Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/c0/9a1d58ab8718505bf25b7ad375a2a104886dfe64519d8b96442bb295637e/langchain_anthropic-0.3.15-py3-none-any.whl", hash = "sha256:894d670bc44e68e0b1f2f09e7e7f977a8f07085a596f114c79aefbb789f6d88d", size = 28054, upload-time = "2025-06-03T15:04:43.108Z" },
 ]
 
 [[package]]
@@ -2412,7 +2380,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "langchain" },
-    { name = "langchain-anthropic" },
     { name = "langchain-azure-ai" },
     { name = "langchain-groq" },
     { name = "langchain-huggingface" },
@@ -2432,7 +2399,6 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "langchain", specifier = ">=0.3.25" },
-    { name = "langchain-anthropic", specifier = ">=0.3.15" },
     { name = "langchain-azure-ai", specifier = ">=0.1.4" },
     { name = "langchain-groq", specifier = ">=0.3.2" },
     { name = "langchain-huggingface", specifier = ">=0.2.0" },
