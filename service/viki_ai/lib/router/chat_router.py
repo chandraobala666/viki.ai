@@ -71,7 +71,6 @@ def create_chat_session(session: ChatSessionCreate, db: Session = Depends(get_db
     Creates a new chat session associated with an agent.
     
     - **name**: Human-readable name for the chat session
-    - **description**: Detailed description of the chat session's purpose
     - **agent**: Reference to the agent that will handle this chat
     """
     # Generate unique session ID

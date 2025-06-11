@@ -5,6 +5,7 @@ export class VikiMain extends BaseComponent {
         super('viki-main');
         this.currentView = 'llm'; // Default view
         this.validViews = ['llm', 'tools', 'rag', 'agents', 'chat'];
+        this.currentChatSession = null;
     }
     
     async connectedCallback() {
@@ -13,8 +14,11 @@ export class VikiMain extends BaseComponent {
             this.setupEventListeners(shadowRoot);
             this.setupURLNavigation();
             // Load view based on URL or default
-            const initialView = this.getViewFromURL() || 'llm';
-            await this.loadView(shadowRoot, initialView);
+            const urlParams = this.getURLParams();
+            const initialView = urlParams.view || 'llm';
+            const initialChatSession = urlParams.session;
+            
+            await this.loadView(shadowRoot, initialView, initialChatSession);
             await this.syncLeftSplitterWithURL();
         }
     }
@@ -31,17 +35,60 @@ export class VikiMain extends BaseComponent {
             const { option } = event.detail;
             this.handleNavigationChange(shadowRoot, option);
         });
+
+        // Listen for chat session change events
+        this.addEventListener('viki-chat-session-change', (event) => {
+            const { sessionId, option } = event.detail;
+            console.log('🚀 VikiMain: Chat session change to:', sessionId);
+            
+            // Update current chat session
+            this.currentChatSession = sessionId;
+            
+            // Ensure we're on the chat view and update URL with session
+            if (this.currentView !== 'chat') {
+                this.handleNavigationChange(shadowRoot, 'chat', sessionId);
+            } else {
+                // Just update URL with new session
+                this.updateURL('chat', sessionId);
+                // Reload the chat view with the new session
+                this.loadView(shadowRoot, 'chat', sessionId);
+            }
+        });
+
+        // Listen for chat session cleared events
+        this.addEventListener('viki-chat-session-cleared', (event) => {
+            console.log('🚀 VikiMain: Chat session cleared');
+            this.currentChatSession = null;
+            this.updateURL('chat'); // Remove session parameter
+        });
     }
 
-    handleNavigationChange(shadowRoot, option) {
-        console.log('🚀 VikiMain: Navigation change to:', option);
-        this.updateURL(option);
-        this.loadView(shadowRoot, option);
+    handleNavigationChange(shadowRoot, option, sessionId = null) {
+        console.log('🚀 VikiMain: Navigation change to:', option, sessionId ? `with session: ${sessionId}` : '');
+        
+        // Update current chat session if provided
+        if (sessionId) {
+            this.currentChatSession = sessionId;
+        } else if (option !== 'chat') {
+            // Clear chat session when navigating away from chat
+            this.currentChatSession = null;
+        }
+        
+        this.updateURL(option, sessionId);
+        this.loadView(shadowRoot, option, sessionId);
     }
 
-    async loadView(shadowRoot, viewType) {
-        console.log('🚀 VikiMain: Loading view:', viewType);
+    async loadView(shadowRoot, viewType, sessionId = null) {
+        console.log('🚀 VikiMain: Loading view:', viewType, sessionId ? `with session: ${sessionId}` : '');
         this.currentView = viewType;
+        
+        // Update current chat session
+        if (viewType === 'chat' && sessionId) {
+            this.currentChatSession = sessionId;
+        } else if (viewType !== 'chat') {
+            this.currentChatSession = null;
+        }
+        
         const contentArea = shadowRoot.querySelector('#canvasContent');
         
         if (!contentArea) {
@@ -74,6 +121,12 @@ export class VikiMain extends BaseComponent {
             case 'chat':
                 console.log('🚀 Creating viki-chat-canvas');
                 canvasComponent = document.createElement('viki-chat-canvas');
+                
+                // If we have a session ID, pass it to the chat canvas
+                if (sessionId) {
+                    canvasComponent.setAttribute('data-session-id', sessionId);
+                    console.log('🚀 Setting session ID on chat canvas:', sessionId);
+                }
                 break;
             default:
                 console.log('🚀 Loading default view');
@@ -110,44 +163,117 @@ export class VikiMain extends BaseComponent {
     setupURLNavigation() {
         // Listen for browser back/forward navigation
         window.addEventListener('popstate', async (event) => {
-            const view = this.getViewFromURL() || 'llm';
-            if (view !== this.currentView) {
-                await this.loadView(this.shadowRoot, view);
+            const urlParams = this.getURLParams();
+            const view = urlParams.view || 'llm';
+            const sessionId = urlParams.session;
+            
+            if (view !== this.currentView || (view === 'chat' && sessionId !== this.currentChatSession)) {
+                await this.loadView(this.shadowRoot, view, sessionId);
                 await this.syncLeftSplitterWithURL();
             }
         });
     }
 
-    getViewFromURL() {
-        // Check URL parameters (e.g., ?view=tools)
+    getURLParams() {
+        // Parse URL parameters and return view and session information
         const urlParams = new URLSearchParams(window.location.search);
-        const paramView = urlParams.get('view');
-        if (this.validViews.includes(paramView)) {
-            return paramView;
-        }
-
-        return null;
+        const view = urlParams.get('view');
+        const session = urlParams.get('session');
+        
+        // Validate view parameter
+        const validView = this.validViews.includes(view) ? view : null;
+        
+        return {
+            view: validView,
+            session: session
+        };
     }
 
-    updateURL(view) {
-        // Update URL with query parameter without page reload
+    getViewFromURL() {
+        // Backward compatibility method
+        return this.getURLParams().view;
+    }
+
+    updateURL(view, sessionId = null) {
+        // Update URL with query parameters without page reload
         const urlParams = new URLSearchParams(window.location.search);
         const currentView = urlParams.get('view');
+        const currentSession = urlParams.get('session');
         
-        // Only update if different to avoid unnecessary history entries
-        if (currentView !== view) {
+        // Update view parameter
+        if (view) {
             urlParams.set('view', view);
-            const newURL = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
-            window.history.pushState({ view }, `VIKI - ${view.toUpperCase()}`, newURL);
+        } else {
+            urlParams.delete('view');
+        }
+        
+        // Update session parameter for chat view
+        if (view === 'chat' && sessionId) {
+            urlParams.set('session', sessionId);
+        } else {
+            urlParams.delete('session');
+        }
+        
+        // Only update if URL has actually changed to avoid unnecessary history entries
+        const newParamsString = urlParams.toString();
+        const currentParamsString = new URLSearchParams(window.location.search).toString();
+        
+        if (newParamsString !== currentParamsString) {
+            const newURL = `${window.location.origin}${window.location.pathname}${newParamsString ? '?' + newParamsString : ''}`;
+            
+            // Create a descriptive title
+            let title = `VIKI - ${view ? view.toUpperCase() : 'HOME'}`;
+            if (view === 'chat' && sessionId) {
+                title += ` (Session: ${sessionId})`;
+            }
+            
+            window.history.pushState({ view, sessionId }, title, newURL);
+            console.log('🚀 VikiMain: URL updated to:', newURL);
         }
     }
 
     async syncLeftSplitterWithURL() {
         // Update the left splitter to reflect the current URL
-        const view = this.getViewFromURL() || 'llm';
+        const urlParams = this.getURLParams();
+        const view = urlParams.view || 'llm';
+        const sessionId = urlParams.session;
+        
         const leftSplitter = this.shadowRoot.querySelector('viki-left-splitter');
-        if (leftSplitter && leftSplitter.setActiveOption) {
-            await leftSplitter.setActiveOption(view);
+        if (leftSplitter) {
+            // Set the active option/view
+            if (leftSplitter.setActiveOption) {
+                await leftSplitter.setActiveOption(view);
+            }
+            
+            // If it's a chat view with a session, also select the chat session silently
+            if (view === 'chat' && sessionId && leftSplitter.selectChatSessionSilent) {
+                leftSplitter.selectChatSessionSilent(sessionId);
+            }
+        }
+    }
+    
+    // Public methods for getting current state
+    getCurrentView() {
+        return this.currentView;
+    }
+    
+    getCurrentChatSession() {
+        return this.currentChatSession;
+    }
+    
+    // Public method to programmatically navigate to a specific chat session
+    async navigateToChatSession(sessionId) {
+        const shadowRoot = this.shadowRoot;
+        if (shadowRoot) {
+            this.handleNavigationChange(shadowRoot, 'chat', sessionId);
+        }
+    }
+    
+    // Public method to clear current chat session
+    clearChatSession() {
+        this.currentChatSession = null;
+        if (this.currentView === 'chat') {
+            this.updateURL('chat'); // Remove session parameter
         }
     }
 }
