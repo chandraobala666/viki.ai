@@ -379,7 +379,7 @@ class AIChatUtility:
                 self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
                 
                 # Create MCP connection for this tool
-                async with stdio_client(server_params) as (read, write):
+                async with stdio_client(server_params) as (read, write):  # type: ignore
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         self.logger.debug(f"MCP connection initialized for tool {tool_name}")
@@ -427,6 +427,119 @@ class AIChatUtility:
             self.logger.warning("No tools were successfully loaded from any MCP configuration")
         
         return all_tools
+
+    async def load_agent_specific_tools_with_persistent_connections(self, langchain_messages) -> Optional[Dict[str, Any]]:
+        """
+        Load MCP tools from agent-specific configurations and execute agent with persistent connections.
+        This method maintains MCP connections throughout the entire agent execution to prevent ClosedResourceError.
+        
+        Args:
+            langchain_messages: The messages to pass to the agent
+            
+        Returns:
+            Agent response dict or None if no tools could be loaded
+        """
+        if not self.agent_mcp_configs:
+            self.logger.info("No agent-specific MCP configurations available")
+            return None
+        
+        # For agent-specific configurations, we need to create multiple connection contexts
+        # and maintain them throughout the agent execution
+        self.logger.info(f"Creating persistent connections for {len(self.agent_mcp_configs)} MCP configurations")
+        
+        # We'll maintain all connections in a list of context managers
+        connection_contexts = []
+        all_tools = []
+        
+        try:
+            # Create all connection contexts
+            for i, config in enumerate(self.agent_mcp_configs, 1):
+                tool_name = config.get("tool_name", "Unknown")
+                tool_id = config.get("tool_id", "unknown")
+                
+                try:
+                    self.logger.info(f"[{i}/{len(self.agent_mcp_configs)}] Creating persistent connection for '{tool_name}' (ID: {tool_id})")
+                    
+                    # Create server parameters for this specific tool
+                    server_params = self.get_server_params(config)
+                    self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
+                    
+                    # Store connection context info for later use
+                    connection_contexts.append({
+                        'tool_name': tool_name,
+                        'tool_id': tool_id,
+                        'server_params': server_params,
+                        'config': config
+                    })
+                    
+                except Exception as e:
+                    error_msg = f"Error creating connection context for '{tool_name}' (ID: {tool_id}): {str(e)}"
+                    self.logger.error(f"❌ {error_msg}")
+                    continue
+            
+            if not connection_contexts:
+                self.logger.warning("No valid connection contexts created")
+                return None
+            
+            # Create nested async context managers for all connections
+            # This is the key fix: maintain all connections throughout agent execution
+            async def create_nested_connections(contexts, index=0):
+                if index >= len(contexts):
+                    # Base case: all connections established, load tools and run agent
+                    self.logger.info(f"All {len(contexts)} MCP connections established")
+                    
+                    # Ensure model is configured
+                    if not self.model:
+                        raise ValueError("Model not properly initialized")
+                    
+                    if not all_tools:
+                        self.logger.warning("No tools loaded from any connection")
+                        return None
+                    
+                    tool_names = [getattr(tool, 'name', 'Unknown') for tool in all_tools]
+                    self.logger.info(f"🛠️ Agent loaded with {len(all_tools)} tools: {tool_names}")
+                    
+                    # Create REACT agent with all tools
+                    agent = create_react_agent(self.model, all_tools)
+                    self.logger.info("🤖 REACT agent created with persistent connection tools")
+                    
+                    # Run the agent with messages while connections are maintained
+                    agent_response = await agent.ainvoke({"messages": langchain_messages})
+                    self.logger.info("✅ Agent executed successfully with persistent connections")
+                    
+                    return agent_response
+                
+                # Recursive case: establish connection for current context
+                ctx = contexts[index]
+                try:
+                    async with stdio_client(ctx['server_params']) as (read, write):  # type: ignore
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            self.logger.debug(f"Connection established for {ctx['tool_name']}")
+                            
+                            # Load tools for this connection
+                            tools = await load_mcp_tools(session)
+                            all_tools.extend(tools)
+                            
+                            tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
+                            self.logger.info(f"✓ Loaded {len(tools)} tools from '{ctx['tool_name']}': {tool_names}")
+                            
+                            # Recursively establish remaining connections
+                            return await create_nested_connections(contexts, index + 1)
+                            
+                except Exception as e:
+                    error_msg = f"Error in persistent connection for '{ctx['tool_name']}': {str(e)}"
+                    self.logger.error(f"❌ {error_msg}")
+                    # Continue with remaining connections
+                    return await create_nested_connections(contexts, index + 1)
+            
+            # Execute with nested connections
+            agent_response = await create_nested_connections(connection_contexts)
+            return agent_response
+            
+        except Exception as e:
+            self.logger.error(f"Error in persistent connection management: {str(e)}")
+            return None
 
     async def initialize_session(self, validate_mcp: bool = True) -> str:
         """
@@ -534,30 +647,31 @@ class AIChatUtility:
             self.logger.info(f"Processing user query: {user_message}")
             
             # Check if we should use agent-specific MCP configurations, legacy approach, or no tools
+            agent_response = None
+            
             if self.agent_mcp_configs:
                 # New approach: Load tools from multiple agent-specific MCP configurations
+                # Maintain connections throughout agent execution to prevent ClosedResourceError
                 self.logger.info(f"🔧 Using agent-specific MCP configurations: {len(self.agent_mcp_configs)} tool(s) assigned")
                 
-                # Load all tools from agent-specific configurations
-                all_tools = await self.load_agent_specific_tools()
+                # Load all tools while maintaining connections and execute agent
+                agent_response = await self.load_agent_specific_tools_with_persistent_connections(langchain_messages)
                 
-                if not all_tools:
-                    self.logger.warning("⚠️ No tools loaded from agent-specific configurations - agent will run without tools")
+                if agent_response:
+                    self.logger.info("✅ Agent invoked successfully with persistent agent-specific tools")
                 else:
-                    tool_names = [getattr(tool, 'name', 'Unknown') for tool in all_tools]
-                    self.logger.info(f"🛠️ Agent loaded with {len(all_tools)} tools: {tool_names}")
-                
-                # Ensure model is configured
-                if not self.model:
-                    raise ValueError("Model not properly initialized")
-                
-                # Create REACT agent with agent-specific tools (may be empty list)
-                agent = create_react_agent(self.model, all_tools)
-                self.logger.info("🤖 REACT agent created with agent-specific tools")
-                
-                # Run the agent with messages
-                agent_response = await agent.ainvoke({"messages": langchain_messages})
-                self.logger.info("✅ Agent invoked successfully with agent-specific tools")
+                    self.logger.warning("⚠️ No response from agent-specific configurations - falling back to no-tools mode")
+                    # Ensure model is configured
+                    if not self.model:
+                        raise ValueError("Model not properly initialized")
+                    
+                    # Create REACT agent with no tools (empty list)
+                    agent = create_react_agent(self.model, [])
+                    self.logger.info("🤖 REACT agent created without tools")
+                    
+                    # Run the agent with messages
+                    agent_response = await agent.ainvoke({"messages": langchain_messages})
+                    self.logger.info("✅ Agent invoked successfully without tools")
                 
             elif self.mcp_server_config:
                 # Legacy approach: Use single MCP server configuration
@@ -565,7 +679,7 @@ class AIChatUtility:
                 server_params = self.get_server_params()
                 
                 # Create a single async context that handles both connections
-                async with stdio_client(server_params) as (read, write):
+                async with stdio_client(server_params) as (read, write):  # type: ignore
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         self.logger.info("🔗 Legacy MCP connection initialized")

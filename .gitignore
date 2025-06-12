@@ -32,3 +32,4 @@ sqlite/
 
 # Ignore langchain_mcp.py file with sensitive data
 service/langchain_mcp.py
+**/demo.rest
