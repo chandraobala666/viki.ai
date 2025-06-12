@@ -167,6 +167,79 @@
     font-size: 0.9rem;
 }
 
+/* Inline markdown styling for chat messages */
+.message-content viki-markdown {
+    width: 100%;
+    margin: 0;
+}
+
+.message-content viki-markdown .markdown-content {
+    padding: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.message-content viki-markdown .markdown-content h1,
+.message-content viki-markdown .markdown-content h2,
+.message-content viki-markdown .markdown-content h3,
+.message-content viki-markdown .markdown-content h4,
+.message-content viki-markdown .markdown-content h5,
+.message-content viki-markdown .markdown-content h6 {
+    margin: 0.5em 0 0.3em 0;
+    font-size: 1em;
+    font-weight: 600;
+    border-bottom: none;
+}
+
+.message-content viki-markdown .markdown-content p {
+    margin: 0.3em 0;
+}
+
+.message-content viki-markdown .markdown-content ul,
+.message-content viki-markdown .markdown-content ol {
+    margin: 0.3em 0;
+    padding-left: 1.2em;
+}
+
+.message-content viki-markdown .markdown-content li {
+    margin: 0.2em 0;
+}
+
+.message-content viki-markdown .markdown-content code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+.message-content viki-markdown .markdown-content pre {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.5em;
+    border-radius: 4px;
+    margin: 0.5em 0;
+    overflow-x: auto;
+}
+
+.message-content viki-markdown .markdown-content blockquote {
+    border-left: 3px solid rgba(0, 0, 0, 0.2);
+    padding-left: 0.8em;
+    margin: 0.5em 0;
+    font-style: italic;
+}
+
+/* Special styling for user messages with markdown */
+.user-message .message-content viki-markdown .markdown-content code {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.user-message .message-content viki-markdown .markdown-content pre {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.user-message .message-content viki-markdown .markdown-content blockquote {
+    border-left-color: rgba(255, 255, 255, 0.5);
+}
+
 /* Message animation */
 .bot-message, .user-message {
     animation: messageSlideIn 0.3s ease-out;
@@ -364,5 +437,144 @@
     .send-btn {
         width: 40px;
         height: 40px;
+    }
+}
+
+/* Markdown button styles */
+.view-markdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #007bff;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.view-markdown-btn:hover {
+    background: #0056b3;
+}
+
+.view-markdown-btn:active {
+    background: #004085;
+}
+
+/* Markdown modal styles */
+.markdown-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.markdown-modal {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    max-width: 80vw;
+    max-height: 80vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.markdown-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.markdown-modal-header h3 {
+    margin: 0;
+    color: #111827;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.copy-markdown-btn {
+    background: #3b82f6;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.copy-markdown-btn:hover {
+    background: #2563eb;
+}
+
+.close-markdown-btn {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 1.5rem;
+    line-height: 1;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.close-markdown-btn:hover {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.markdown-modal-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+}
+
+.markdown-modal-body viki-markdown {
+    flex: 1;
+    min-height: 400px;
+}
+
+/* Responsive modal */
+@media (max-width: 768px) {
+    .markdown-modal {
+        max-width: 95vw;
+        max-height: 90vh;
+        margin: 1rem;
+    }
+    
+    .markdown-modal-header {
+        padding: 0.75rem 1rem;
+    }
+    
+    .markdown-modal-header h3 {
+        font-size: 1rem;
     }
 }

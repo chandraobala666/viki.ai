@@ -1,4 +1,5 @@
 import { BaseComponent } from '../base/base.js';
+import { VikiMarkdown } from '../viki-markdown/viki-markdown.js';
 
 class VikiChatCanvas extends BaseComponent {
     constructor() {
@@ -80,6 +81,23 @@ class VikiChatCanvas extends BaseComponent {
         sendButton?.addEventListener('click', () => {
             console.log('🚀 Send button clicked, calling sendMessage...');
             this.sendMessage();
+        });
+
+        // Event delegation for markdown buttons
+        const chatMessages = shadowRoot.querySelector('.chat-messages');
+        chatMessages?.addEventListener('click', (e) => {
+            if (e.target.classList.contains('view-markdown-btn')) {
+                const button = e.target;
+                const messageDiv = button.closest('.bot-message, .user-message');
+                const content = messageDiv.getAttribute('data-message-content');
+                const messageId = button.getAttribute('data-message-id');
+                
+                if (content) {
+                    this.showMarkdownModal(messageId, content);
+                } else {
+                    console.error('No content found for markdown display');
+                }
+            }
         });
     }
 
@@ -353,9 +371,7 @@ class VikiChatCanvas extends BaseComponent {
             console.error('Error loading chat messages:', error);
             this.showError('Failed to load chat messages. Please try again.');
         }
-    }
-
-    displayStoredMessage(message) {
+    }    displayStoredMessage(message) {
         const chatMessages = this.shadowRoot.querySelector('#chatMessages');
         if (!chatMessages) return;
 
@@ -376,21 +392,42 @@ class VikiChatCanvas extends BaseComponent {
 
         const messageDiv = document.createElement('div');
         messageDiv.className = type === 'user' ? 'user-message' : 'bot-message';
-
+        
         const avatarSrc = type === 'user' ? './ui/assets/chat/user.svg' : './ui/assets/chat/bot.svg';
         const avatarAlt = type === 'user' ? 'User' : 'Bot';
+
+        // Check if the content looks like markdown (for bot messages only)
+        const hasMarkdown = type === 'bot' && this.detectMarkdown(content);
+        
+        let markdownButton = '';
+        let displayContent = '';
+        
+        if (hasMarkdown) {
+            const messageId = 'stored-msg-' + (message.id || Date.now()) + '-' + Math.random().toString(36).substr(2, 9);
+            // Store raw markdown content in a data attribute
+            markdownButton = `<button class="view-markdown-btn" data-message-id="${messageId}" title="View as Markdown">View Markdown</button>`;
+            messageDiv.setAttribute('data-message-id', messageId);
+            messageDiv.setAttribute('data-message-content', content);
+            
+            // Display placeholder instead of stripped markdown
+            displayContent = `<p><em>Markdown content hidden. Click 'View Markdown' to view.</em></p>`;
+        } else {
+            // Display regular escaped text for non-markdown content
+            displayContent = `<p>${this.escapeHtml(content)}</p>`;
+        }
 
         messageDiv.innerHTML = `
             <div class="message-avatar">
                 <img src="${avatarSrc}" alt="${avatarAlt}" width="32" height="32">
             </div>
             <div class="message-content">
-                <p>${this.escapeHtml(content)}</p>
+                ${displayContent}
+                ${markdownButton}
             </div>
         `;
 
         chatMessages.appendChild(messageDiv);
-
+        
         // Store message in local array
         this.messages.push({
             type,
@@ -585,17 +622,39 @@ class VikiChatCanvas extends BaseComponent {
         const avatarSrc = type === 'user' ? './ui/assets/chat/user.svg' : './ui/assets/chat/bot.svg';
         const avatarAlt = type === 'user' ? 'User' : 'Bot';
 
+        // Check if the content looks like markdown (for bot messages only)
+        const hasMarkdown = type === 'bot' && this.detectMarkdown(content);
+        
+        let markdownButton = '';
+        let displayContent = '';
+        
+        if (hasMarkdown) {
+            const messageId = 'stored-msg-' + (Date.now()) + '-' + Math.random().toString(36).substr(2, 9);
+            // Store raw markdown content in a data attribute
+            markdownButton = `<button class="view-markdown-btn" data-message-id="${messageId}" title="View as Markdown">View Markdown</button>`;
+            messageDiv.setAttribute('data-message-id', messageId);
+            messageDiv.setAttribute('data-message-content', content);
+            
+            // Display placeholder and hide markdown in chat view
+            displayContent = `<p><em>Markdown content hidden. Click 'View Markdown' to view.</em></p>`;
+        } else {
+            // Display regular escaped text for non-markdown content
+            displayContent = `<p>${this.escapeHtml(content)}</p>`;
+        }
+
         messageDiv.innerHTML = `
             <div class="message-avatar">
                 <img src="${avatarSrc}" alt="${avatarAlt}" width="32" height="32">
             </div>
             <div class="message-content">
-                <p>${this.escapeHtml(content)}</p>
+                ${displayContent}
+                ${markdownButton}
             </div>
         `;
 
         console.log('🚀 Appending message to DOM...');
         chatMessages.appendChild(messageDiv);
+        
         console.log('✅ Message appended to DOM');
         this.scrollToBottom();
 
@@ -729,6 +788,213 @@ class VikiChatCanvas extends BaseComponent {
                 </div>
             </div>
         `;
+    }
+
+    detectMarkdown(content) {
+        console.log('🔍 Detecting markdown in content:', content?.substring(0, 100) + '...');
+        
+        // Simple markdown detection patterns
+        const markdownPatterns = [
+            /#{1,6}\s+.+/,                    // Headers (# ## ### etc.)
+            /\*\*[^*\n]+\*\*/,               // Bold text
+            /\*[^*\n]+\*/,                   // Italic text
+            /__[^_\n]+__/,                   // Bold with underscores
+            /_[^_\n]+_/,                     // Italic with underscores
+            /`[^`\n]+`/,                     // Inline code
+            /```[\s\S]*?```/,                // Code blocks
+            /^\s*[-*+]\s+/m,                 // Unordered lists
+            /^\s*\d+\.\s+/m,                 // Ordered lists
+            /\[[^\]\n]+\]\([^)\n]+\)/,       // Links
+            /!\[[^\]\n]*\]\([^)\n]+\)/,      // Images
+            /^\s*>\s+/m,                     // Blockquotes
+            /^\s*[-*_]{3,}\s*$/m,            // Horizontal rules
+            /^\s*\|.+\|/m,                   // Tables
+            /\n\s*\n/,                       // Multiple line breaks (common in markdown)
+            /~~[^~\n]+~~/                    // Strikethrough
+        ];
+
+        // Check if content contains multiple markdown patterns or significant formatting
+        let patternCount = 0;
+        let matchedPatterns = [];
+        
+        for (const pattern of markdownPatterns) {
+            if (pattern.test(content)) {
+                patternCount++;
+                matchedPatterns.push(pattern.source);
+                // If we find headers, code blocks, or lists, it's likely markdown
+                if (pattern.source.includes('#{1,6}') || 
+                    pattern.source.includes('```') || 
+                    pattern.source.includes('[-*+]') ||
+                    pattern.source.includes('\\d+\\.')) {
+                    console.log('✅ Markdown detected (strong pattern):', pattern.source);
+                    return true;
+                }
+            }
+        }
+
+        // If we have multiple markdown patterns, consider it markdown
+        const isMarkdown = patternCount >= 2;
+        console.log(`📊 Markdown detection: ${patternCount} patterns matched:`, matchedPatterns);
+        console.log(`🔍 Is markdown: ${isMarkdown}`);
+        return isMarkdown;
+    }
+
+    stripMarkdown(content) {
+        if (!content) return '';
+
+        let text = content;
+
+        // Remove code blocks first (to avoid processing their content)
+        text = text.replace(/```[\s\S]*?```/g, '[Code Block]');
+        
+        // Remove inline code
+        text = text.replace(/`([^`]+)`/g, '$1');
+        
+        // Remove headers
+        text = text.replace(/^#{1,6}\s+(.+)$/gm, '$1');
+        
+        // Remove bold and italic
+        text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+        text = text.replace(/\*([^*]+)\*/g, '$1');
+        text = text.replace(/__([^_]+)__/g, '$1');
+        text = text.replace(/_([^_]+)_/g, '$1');
+        
+        // Remove strikethrough
+        text = text.replace(/~~([^~]+)~~/g, '$1');
+        
+        // Remove links but keep the text
+        text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+        
+        // Remove images
+        text = text.replace(/!\[[^\]]*\]\([^)]+\)/g, '[Image]');
+        
+        // Remove blockquotes
+        text = text.replace(/^\s*>\s+(.+)$/gm, '$1');
+        
+        // Remove horizontal rules
+        text = text.replace(/^\s*[-*_]{3,}\s*$/gm, '');
+        
+        // Remove list markers
+        text = text.replace(/^\s*[-*+]\s+(.+)$/gm, '$1');
+        text = text.replace(/^\s*\d+\.\s+(.+)$/gm, '$1');
+        
+        // Clean up multiple spaces and line breaks
+        text = text.replace(/\n\s*\n/g, '\n');
+        text = text.replace(/^\s+|\s+$/g, '');
+        
+        return text;
+    }
+
+    showMarkdownModal(messageId, content) {
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.className = 'markdown-modal-overlay';
+        modal.innerHTML = `
+            <div class="markdown-modal">
+                <div class="markdown-modal-header">
+                    <h3>Markdown View</h3>
+                    <div class="modal-actions">
+                        <button class="close-markdown-btn">×</button>
+                    </div>
+                </div>
+                <div class="markdown-modal-body">
+                    <viki-markdown use-html></viki-markdown>
+                </div>
+            </div>
+        `;
+
+        // Add to body
+        document.body.appendChild(modal);
+
+        // Set the markdown content
+        setTimeout(() => {
+            const markdownComponent = modal.querySelector('viki-markdown');
+            if (markdownComponent) {
+                markdownComponent.setMarkdown(content);
+            }
+        }, 0);
+        
+        // Store content for potential use
+        modal.setAttribute('data-markdown-content', content);
+
+        // Add event listeners
+        const closeBtn = modal.querySelector('.close-markdown-btn');
+        closeBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        // Add click outside to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Add escape key to close
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+
+        console.log('📖 Markdown modal opened with ID:', messageId);
+    }
+
+    copyMarkdownContent(messageId, button) {
+        const modal = button.closest('.markdown-modal-overlay');
+        const content = modal.getAttribute('data-markdown-content');
+        
+        if (navigator.clipboard && content) {
+            navigator.clipboard.writeText(content).then(() => {
+                // Show feedback
+                const originalText = button.textContent;
+                button.textContent = '✅ Copied!';
+                button.style.background = '#10b981';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy content: ', err);
+                // Fallback for older browsers
+                this.fallbackCopyTextToClipboard(content, button);
+            });
+        } else {
+            this.fallbackCopyTextToClipboard(content, button);
+        }
+    }
+
+    fallbackCopyTextToClipboard(text, button) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.position = 'fixed';
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                const originalText = button.textContent;
+                button.textContent = '✅ Copied!';
+                button.style.background = '#10b981';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '';
+                }, 2000);
+            }
+        } catch (err) {
+            console.error('Fallback: Oops, unable to copy', err);
+        }
+
+        document.body.removeChild(textArea);
     }
 }
 

@@ -17,7 +17,8 @@ const componentFiles = [
     '../components/viki-agents-canvas/viki-agents-canvas.js',
     '../components/viki-chat-canvas/viki-chat-canvas.js',
     '../components/viki-card/viki-card.js',
-    '../components/viki-left-splitter/viki-left-splitter.js'
+    '../components/viki-left-splitter/viki-left-splitter.js',
+    '../components/viki-markdown/viki-markdown.js'
 ];
 
 componentFiles.forEach(file => {
