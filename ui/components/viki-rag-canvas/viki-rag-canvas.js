@@ -207,12 +207,18 @@ class VikiRAGCanvas extends BaseComponent {
         const card = document.createElement('div');
         card.className = 'docs-card';
         
+        // Truncate document description if longer than 16 characters
+        const originalDescription = docData.description || '';
+        const displayDescription = originalDescription.length > 16 
+            ? originalDescription.substring(0, 16) + '..'
+            : originalDescription;
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-main-content" onclick="this.getRootNode().host.viewKnowledgeBaseDetails('${docData.id}')" style="cursor: pointer;">
                     <div class="card-info">
                         <h3 class="model-name">${docData.name}</h3>
-                        <p class="provider-name">${docData.description}</p>
+                        <p class="provider-name" title="${originalDescription}">${displayDescription}</p>
                         <div class="file-count">
                             <img src="./ui/assets/icons/file.svg" alt="Files" width="16" height="16">
                             <span>${docData.fileCount} Documents</span>

@@ -332,6 +332,12 @@ class VikiAgentsCanvas extends BaseComponent {
         const card = document.createElement('div');
         card.className = 'agents-card';
         
+        // Truncate agent description if longer than 16 characters
+        const originalDescription = agent.description || '';
+        const displayDescription = originalDescription.length > 16 
+            ? originalDescription.substring(0, 16) + '..'
+            : originalDescription;
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-main-content">
@@ -340,7 +346,7 @@ class VikiAgentsCanvas extends BaseComponent {
                     </div>
                     <div class="card-info">
                         <h3 class="model-name">${agent.name}</h3>
-                        <p class="provider-name">${agent.description}</p>
+                        <p class="provider-name" title="${originalDescription}">${displayDescription}</p>
                         <div class="agent-info">
                             <div class="agent-counts" id="agent-counts-${agent.id}">
                                 <span class="loading-counts">Loading...</span>

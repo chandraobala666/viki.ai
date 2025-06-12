@@ -533,7 +533,7 @@ class AIChatUtility:
             
             self.logger.info(f"Processing user query: {user_message}")
             
-            # Check if we should use agent-specific MCP configurations or legacy approach
+            # Check if we should use agent-specific MCP configurations, legacy approach, or no tools
             if self.agent_mcp_configs:
                 # New approach: Load tools from multiple agent-specific MCP configurations
                 self.logger.info(f"🔧 Using agent-specific MCP configurations: {len(self.agent_mcp_configs)} tool(s) assigned")
@@ -551,7 +551,7 @@ class AIChatUtility:
                 if not self.model:
                     raise ValueError("Model not properly initialized")
                 
-                # Create REACT agent with agent-specific tools
+                # Create REACT agent with agent-specific tools (may be empty list)
                 agent = create_react_agent(self.model, all_tools)
                 self.logger.info("🤖 REACT agent created with agent-specific tools")
                 
@@ -559,7 +559,7 @@ class AIChatUtility:
                 agent_response = await agent.ainvoke({"messages": langchain_messages})
                 self.logger.info("✅ Agent invoked successfully with agent-specific tools")
                 
-            else:
+            elif self.mcp_server_config:
                 # Legacy approach: Use single MCP server configuration
                 self.logger.info("🔧 Using legacy single MCP server configuration")
                 server_params = self.get_server_params()
@@ -586,6 +586,22 @@ class AIChatUtility:
                         # Run the agent with messages
                         agent_response = await agent.ainvoke({"messages": langchain_messages})
                         self.logger.info("✅ Agent invoked successfully with legacy tools")
+            
+            else:
+                # No tools approach: Agent runs without any MCP tools
+                self.logger.info("🔧 No MCP configurations available - agent will run without tools")
+                
+                # Ensure model is configured
+                if not self.model:
+                    raise ValueError("Model not properly initialized")
+                
+                # Create REACT agent with no tools (empty list)
+                agent = create_react_agent(self.model, [])
+                self.logger.info("🤖 REACT agent created without tools")
+                
+                # Run the agent with messages
+                agent_response = await agent.ainvoke({"messages": langchain_messages})
+                self.logger.info("✅ Agent invoked successfully without tools")
             
             # Process agent response (same for both approaches)
             if not agent_response or "messages" not in agent_response:
@@ -753,12 +769,3 @@ async def quick_chat(message: str,
         return response["response"]
     else:
         return f"Error: {response['error']}"
-
-
-if __name__ == "__main__":
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-

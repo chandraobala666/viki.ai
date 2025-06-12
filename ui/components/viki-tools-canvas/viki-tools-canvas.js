@@ -248,6 +248,12 @@ class VikiToolsCanvas extends BaseComponent {
         const card = document.createElement('div');
         card.className = 'tools-card';
         
+        // Truncate tool description if longer than 16 characters
+        const originalDescription = tool.description || 'MCP Tool';
+        const displayDescription = originalDescription.length > 16 
+            ? originalDescription.substring(0, 16) + '..'
+            : originalDescription;
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-main-content" style="cursor: pointer;">
@@ -256,7 +262,7 @@ class VikiToolsCanvas extends BaseComponent {
                     </div>
                     <div class="card-info">
                         <h3 class="model-name">${tool.name}</h3>
-                        <p class="provider-name">${tool.description || 'MCP Tool'}</p>
+                        <p class="provider-name" title="${originalDescription}">${displayDescription}</p>
                         <div class="function-count">
                             <div class="tools-count">
                                 <img src="./ui/assets/icons/database.svg" alt="Functions" width="16" height="16">

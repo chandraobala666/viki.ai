@@ -289,6 +289,11 @@ class VikiLLMCanvas extends BaseComponent {
         const hasEndpoint = llm.endpointUrl && llm.endpointUrl.trim() !== '';
         const endpointDisplay = hasEndpoint ? llm.endpointUrl : '';
         
+        // Truncate model name if longer than 16 characters
+        const displayModelName = llm.modelCode.length > 16 
+            ? llm.modelCode.substring(0, 16) + '..'
+            : llm.modelCode;
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-main-content">
@@ -296,7 +301,7 @@ class VikiLLMCanvas extends BaseComponent {
                         ${this.getProviderIcon(llm.providerTypeCode)}
                     </div>
                     <div class="card-info">
-                        <h3 class="model-name">${llm.modelCode}</h3>
+                        <h3 class="model-name" title="${llm.modelCode}">${displayModelName}</h3>
                         <p class="provider-name">${this.getProviderDescription(llm.providerTypeCode)}</p>
                         <div class="llm-info">
                             <span></span>
