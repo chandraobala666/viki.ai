@@ -41,7 +41,8 @@ class AIChatUtility:
                  base_url: Optional[str] = None,
                  temperature: float = 0.0,
                  system_prompt: Optional[str] = None,
-                 mcp_server_config: Optional[Dict[str, Any]] = None):
+                 mcp_server_config: Optional[Dict[str, Any]] = None,
+                 agent_mcp_configs: Optional[List[Dict[str, Any]]] = None):
         """
         Initialize the AI Chat Utility.
         
@@ -52,7 +53,8 @@ class AIChatUtility:
             base_url: Base URL for the provider (if required)
             temperature: Temperature setting for the model
             system_prompt: Custom system prompt for the chat session
-            mcp_server_config: Configuration dictionary for MCP server parameters
+            mcp_server_config: Configuration dictionary for MCP server parameters (legacy, deprecated)
+            agent_mcp_configs: List of agent-specific MCP configurations for individual tools
         """
         self.llm_provider = llm_provider.lower()
         self.model_name = model_name
@@ -60,17 +62,20 @@ class AIChatUtility:
         self.base_url = base_url
         self.temperature = temperature
         
-        # Store MCP server configuration
-        self.mcp_server_config = mcp_server_config or {
-            "mcp_command": "uv run openapi_mcp_server",
-            "env": {
-                "DEBUG": "True",
-                "API_BASE_URL": "http://129.80.245.181:8004/OfsllRestWS/service/api/resources",
-                "OPENAPI_SPEC_PATH": "/Users/rahgadda/rahul/DEV/mcp/ofsll_swaggerv3.json",
-                "API_HEADERS": "Accept:application/json,Authorization:Basic T0xMQURNSU46T0xMQURNSU4qMTIz,Content-Type:application/json",
-                "API_WHITE_LIST": "getAccountDetail,postAccountComments,fetchAccountComments,executePaymentPosting,getCallActivityDetail,executeCallActivity"
-            }
-        }
+        # Setup logging first
+        self.logger = logging.getLogger(__name__)
+        
+        # Handle both legacy single MCP config and new agent-specific multiple configs
+        if agent_mcp_configs:
+            # Use agent-specific configurations (preferred approach)
+            self.agent_mcp_configs = agent_mcp_configs
+            self.mcp_server_config = None  # Deprecate the single config
+            self.logger.info(f"Using agent-specific MCP configurations: {len(agent_mcp_configs)} tools")
+        else:
+            # Fall back to legacy single MCP configuration for backward compatibility
+            self.agent_mcp_configs = []
+            self.mcp_server_config = mcp_server_config 
+            self.logger.info("Using legacy single MCP configuration")
         
         # Default system prompt for OFSLL application
         self.system_prompt = system_prompt or (
@@ -88,9 +93,6 @@ class AIChatUtility:
         self.agent = None
         self.session_id = None
         self.message_history: List[Dict[str, Any]] = []
-        
-        # Setup logging
-        self.logger = logging.getLogger(__name__)
         
     def configure_llm(self) -> Any:
         """
@@ -138,33 +140,16 @@ class AIChatUtility:
                     endpoint=self.base_url or "https://models.github.ai/inference"
                 )
                 
-            elif self.llm_provider == "huggingface":
-                if not self.api_key:
-                    raise ValueError("API key is required for HuggingFace")
-                os.environ["HUGGINGFACEHUB_API_TOKEN"] = self.api_key
-                llm = HuggingFaceEndpoint(
-                    repo_id=self.model_name,
-                    model=self.model_name,
-                    task="text-generation"
-                )
-                self.model = ChatHuggingFace(llm=llm)
-                
             elif self.llm_provider == "openrouter":
                 if not self.api_key:
                     raise ValueError("API key is required for OpenRouter")
                     
                 # Custom OpenRouter implementation
-                class ChatOpenRouter(ChatOpenAI):
-                    def __init__(self, **kwargs):
-                        super().__init__(
-                            base_url="https://openrouter.ai/api/v1",
-                            **kwargs
-                        )
-                
-                self.model = ChatOpenRouter(
+                self.model = ChatOpenAI(
                     model=self.model_name,
                     api_key=SecretStr(self.api_key),
-                    temperature=self.temperature
+                    temperature=self.temperature,
+                    base_url="https://openrouter.ai/api/v1"
                 )
                 
             else:
@@ -188,8 +173,11 @@ class AIChatUtility:
         Returns:
             StdioServerParameters: Configured server parameters for MCP
         """
-        # Use provided config or fall back to instance config
+        # Use provided config or fall back to instance config (legacy support)
         config = server_config or self.mcp_server_config
+        
+        if not config:
+            raise ValueError("No MCP server configuration available")
         
         # Handle both old format (command, args, env) and new format (mcp_command, env)
         if "mcp_command" in config:
@@ -223,6 +211,14 @@ class AIChatUtility:
         try:
             # Use provided config or fall back to instance config
             config = server_config or self.mcp_server_config
+            
+            if not config:
+                return {
+                    "success": False,
+                    "function_count": 0,
+                    "error_message": "No MCP configuration available",
+                    "functions": None
+                }
             
             # Extract mcp_command and environment variables
             if "mcp_command" in config:
@@ -270,6 +266,14 @@ class AIChatUtility:
         try:
             # Use provided config or fall back to instance config
             config = server_config or self.mcp_server_config
+            
+            if not config:
+                return {
+                    "success": False,
+                    "function_count": 0,
+                    "error_message": "No MCP configuration available",
+                    "functions": None
+                }
             
             # Extract mcp_command and environment variables
             if "mcp_command" in config:
@@ -345,6 +349,85 @@ class AIChatUtility:
             self.logger.error(f"Error loading MCP tools: {str(e)}")
             raise
     
+    async def load_agent_specific_tools(self) -> List[Any]:
+        """
+        Load MCP tools from agent-specific configurations.
+        Each tool gets its own MCP server connection.
+        
+        Returns:
+            List of loaded MCP tools from all agent-specific configurations
+        """
+        if not self.agent_mcp_configs:
+            self.logger.info("No agent-specific MCP configurations, falling back to legacy approach")
+            return []
+        
+        all_tools = []
+        successful_tools = []
+        failed_tools = []
+        
+        self.logger.info(f"Starting to load tools from {len(self.agent_mcp_configs)} agent-specific MCP configurations")
+        
+        for i, config in enumerate(self.agent_mcp_configs, 1):
+            tool_name = config.get("tool_name", "Unknown")
+            tool_id = config.get("tool_id", "unknown")
+            
+            try:
+                self.logger.info(f"[{i}/{len(self.agent_mcp_configs)}] Loading tools for '{tool_name}' (ID: {tool_id})")
+                
+                # Create server parameters for this specific tool
+                server_params = self.get_server_params(config)
+                self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
+                
+                # Create MCP connection for this tool
+                async with stdio_client(server_params) as (read, write):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        self.logger.debug(f"MCP connection initialized for tool {tool_name}")
+                        
+                        # Load MCP tools for this specific configuration
+                        tools = await load_mcp_tools(session)
+                        all_tools.extend(tools)
+                        
+                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
+                        self.logger.info(f"✓ Loaded {len(tools)} tools from '{tool_name}': {tool_names}")
+                        successful_tools.append({
+                            "tool_id": tool_id,
+                            "tool_name": tool_name,
+                            "loaded_count": len(tools),
+                            "tool_names": tool_names
+                        })
+                        
+            except Exception as e:
+                error_msg = f"Error loading tools for '{tool_name}' (ID: {tool_id}): {str(e)}"
+                self.logger.error(f"❌ {error_msg}")
+                failed_tools.append({
+                    "tool_id": tool_id,
+                    "tool_name": tool_name,
+                    "error": str(e)
+                })
+                # Continue with other tools instead of failing completely
+                continue
+        
+        # Log summary
+        total_tools = len(all_tools)
+        successful_count = len(successful_tools)
+        failed_count = len(failed_tools)
+        
+        if successful_count > 0:
+            self.logger.info(f"✓ Successfully loaded {total_tools} tools from {successful_count}/{len(self.agent_mcp_configs)} MCP configurations")
+            for success in successful_tools:
+                self.logger.debug(f"  - {success['tool_name']}: {success['loaded_count']} tools")
+        
+        if failed_count > 0:
+            self.logger.warning(f"❌ Failed to load tools from {failed_count}/{len(self.agent_mcp_configs)} MCP configurations")
+            for failure in failed_tools:
+                self.logger.warning(f"  - {failure['tool_name']}: {failure['error']}")
+        
+        if total_tools == 0:
+            self.logger.warning("No tools were successfully loaded from any MCP configuration")
+        
+        return all_tools
+
     async def initialize_session(self, validate_mcp: bool = True) -> str:
         """
         Initialize a new chat session with LLM and MCP tools.
@@ -450,19 +533,47 @@ class AIChatUtility:
             
             self.logger.info(f"Processing user query: {user_message}")
             
-            # Use the simpler approach similar to langchain_mcp.py
-            server_params = self.get_server_params()
-            
-            # Create a single async context that handles both connections
-            try:
+            # Check if we should use agent-specific MCP configurations or legacy approach
+            if self.agent_mcp_configs:
+                # New approach: Load tools from multiple agent-specific MCP configurations
+                self.logger.info(f"🔧 Using agent-specific MCP configurations: {len(self.agent_mcp_configs)} tool(s) assigned")
+                
+                # Load all tools from agent-specific configurations
+                all_tools = await self.load_agent_specific_tools()
+                
+                if not all_tools:
+                    self.logger.warning("⚠️ No tools loaded from agent-specific configurations - agent will run without tools")
+                else:
+                    tool_names = [getattr(tool, 'name', 'Unknown') for tool in all_tools]
+                    self.logger.info(f"🛠️ Agent loaded with {len(all_tools)} tools: {tool_names}")
+                
+                # Ensure model is configured
+                if not self.model:
+                    raise ValueError("Model not properly initialized")
+                
+                # Create REACT agent with agent-specific tools
+                agent = create_react_agent(self.model, all_tools)
+                self.logger.info("🤖 REACT agent created with agent-specific tools")
+                
+                # Run the agent with messages
+                agent_response = await agent.ainvoke({"messages": langchain_messages})
+                self.logger.info("✅ Agent invoked successfully with agent-specific tools")
+                
+            else:
+                # Legacy approach: Use single MCP server configuration
+                self.logger.info("🔧 Using legacy single MCP server configuration")
+                server_params = self.get_server_params()
+                
+                # Create a single async context that handles both connections
                 async with stdio_client(server_params) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
-                        self.logger.info("MCP connection initialized")
+                        self.logger.info("🔗 Legacy MCP connection initialized")
                         
                         # Load MCP tools
                         tools = await load_mcp_tools(session)
-                        self.logger.info(f"Loaded {len(tools)} MCP tools")
+                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
+                        self.logger.info(f"🛠️ Loaded {len(tools)} legacy tools: {tool_names}")
                         
                         # Ensure model is configured
                         if not self.model:
@@ -470,48 +581,45 @@ class AIChatUtility:
                         
                         # Create REACT agent
                         agent = create_react_agent(self.model, tools)
-                        self.logger.info("REACT agent created")
+                        self.logger.info("🤖 REACT agent created with legacy tools")
                         
                         # Run the agent with messages
                         agent_response = await agent.ainvoke({"messages": langchain_messages})
-                        self.logger.info("Agent invoked successfully")
-                        
-                        if not agent_response or "messages" not in agent_response:
-                            self.logger.error("Invalid agent response")
-                            return {
-                                "success": False,
-                                "error": "Invalid agent response",
-                                "session_id": self.session_id
-                            }
-                        
-                        # Extract AI response from the last message
-                        ai_messages = agent_response["messages"]
-                        ai_response_content = ""
-                        
-                        # Get the last AI message content
-                        for msg in reversed(ai_messages):
-                            if hasattr(msg, 'content') and msg.content:
-                                ai_response_content = msg.content
-                                break
-                        
-                        # Add AI response to history if using history
-                        if include_history:
-                            ai_msg = {"role": "assistant", "content": ai_response_content}
-                            self.message_history.append(ai_msg)
-                        
-                        self.logger.info("AI response generated successfully")
-                        
-                        return {
-                            "success": True,
-                            "response": ai_response_content,
-                            "session_id": self.session_id,
-                            "message_count": len(self.message_history) if include_history else 2,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                        
-            except Exception as mcp_error:
-                self.logger.error(f"MCP connection error: {str(mcp_error)}", exc_info=True)
-                raise mcp_error
+                        self.logger.info("✅ Agent invoked successfully with legacy tools")
+            
+            # Process agent response (same for both approaches)
+            if not agent_response or "messages" not in agent_response:
+                self.logger.error("Invalid agent response")
+                return {
+                    "success": False,
+                    "error": "Invalid agent response",
+                    "session_id": self.session_id
+                }
+            
+            # Extract AI response from the last message
+            ai_messages = agent_response["messages"]
+            ai_response_content = ""
+            
+            # Get the last AI message content
+            for msg in reversed(ai_messages):
+                if hasattr(msg, 'content') and msg.content:
+                    ai_response_content = msg.content
+                    break
+            
+            # Add AI response to history if using history
+            if include_history:
+                ai_msg = {"role": "assistant", "content": ai_response_content}
+                self.message_history.append(ai_msg)
+            
+            self.logger.info("AI response generated successfully")
+            
+            return {
+                "success": True,
+                "response": ai_response_content,
+                "session_id": self.session_id,
+                "message_count": len(self.message_history) if include_history else 2,
+                "timestamp": datetime.now().isoformat()
+            }
                     
         except Exception as e:
             self.logger.error(f"Error generating response: {str(e)}", exc_info=True)
@@ -647,79 +755,10 @@ async def quick_chat(message: str,
         return f"Error: {response['error']}"
 
 
-# ============================================================================
-# DEMO FUNCTION
-# ============================================================================
-
-async def demo():
-    """
-    Demo function showing how to use the AIChatUtility class with MCP test utility.
-    """
-    print("=== AI Chat Utility Demo ===\n")
-    
-    # Example custom MCP server configuration using the new format
-    custom_mcp_config = {
-        "mcp_command": "uv run openapi_mcp_server",
-        "env": {
-            "DEBUG": "True",
-            "API_BASE_URL": "http://129.80.245.181:8004/OfsllRestWS/service/api/resources",
-            "OPENAPI_SPEC_PATH": "/Users/rahgadda/rahul/DEV/mcp/ofsll_swaggerv3.json",
-            "API_HEADERS": "Accept:application/json,Authorization:Basic T0xMQURNSU46T0xMQURNSU4qMTIz,Content-Type:application/json",
-            "API_WHITE_LIST": "getAccountDetail,postAccountComments,fetchAccountComments,executePaymentPosting,getCallActivityDetail,executeCallActivity"
-        }
-    }
-    
-    # Create and initialize chat session with custom MCP config
-    chat = AIChatUtility(
-        llm_provider="ollama",
-        model_name="qwen3:32b",
-        temperature=0.0,
-        mcp_server_config=custom_mcp_config
-    )
-    
-    # Test MCP configuration before initializing session
-    print("Testing MCP configuration...")
-    test_result = await chat.test_mcp_configuration()
-    if test_result["success"]:
-        print(f"✅ MCP configuration test successful. Found {test_result['function_count']} functions.")
-        if test_result["functions"]:
-            print("Available functions:")
-            for func in test_result["functions"][:5]:  # Show first 5 functions
-                print(f"  - {func['name']}: {func['description']}")
-    else:
-        print(f"❌ MCP configuration test failed: {test_result['error_message']}")
-    print()
-    
-    await chat.initialize_session()
-    print(f"Session initialized: {chat.session_id}\n")
-    
-    # Demo conversation
-    queries = [
-        "What tools are available?",
-        "Can you help me get account details for account number 20000100061065?",
-        "How can I post a comment to an account?"
-    ]
-    
-    for query in queries:
-        print(f"User: {query}")
-        response = await chat.generate_response(query)
-        
-        if response["success"]:
-            print(f"AI: {response['response']}\n")
-        else:
-            print(f"Error: {response['error']}\n")
-    
-    # Show session info
-    print("Session Info:")
-    print(chat.get_session_info())
-
-
 if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
-    # Run demo
-    asyncio.run(demo())
+

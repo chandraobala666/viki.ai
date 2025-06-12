@@ -298,7 +298,6 @@ class VikiLLMCanvas extends BaseComponent {
                     <div class="card-info">
                         <h3 class="model-name">${llm.modelCode}</h3>
                         <p class="provider-name">${this.getProviderDescription(llm.providerTypeCode)}</p>
-                        ${hasEndpoint ? `<p class="endpoint">Endpoint: ${endpointDisplay}</p>` : ''}
                         <div class="llm-info">
                             <span></span>
                         </div>

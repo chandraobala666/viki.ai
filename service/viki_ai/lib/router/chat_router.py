@@ -407,14 +407,57 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
         
         llm_provider = provider_mapping.get(llm_config.llc_provider_type_cd.upper(), 'ollama')
         
-        # Create AI Chat Utility instance
+        # 5.5. Load agent-specific tools and create MCP server configurations
+        logger.info(f"Loading tools for agent {agent.agt_id}")
+        
+        # Import required models for agent tool queries
+        from ..model.agent import AgentTool
+        from ..model.tools import Tool, ToolEnvironmentVariable
+        
+        # Get tools associated with this agent
+        agent_tools_query = db.query(AgentTool).filter(AgentTool.ato_agt_id == agent.agt_id).all()
+        tool_ids = [at.ato_tol_id for at in agent_tools_query]
+        
+        logger.info(f"Found {len(tool_ids)} tools associated with agent {agent.agt_id}: {tool_ids}")
+        
+        # Build agent-specific MCP server configurations
+        agent_mcp_configs = []
+        
+        if tool_ids:
+            # Get tool details for each associated tool
+            tools = db.query(Tool).filter(Tool.tol_id.in_(tool_ids)).all()
+            
+            for tool in tools:
+                # Get environment variables for this tool
+                env_vars = db.query(ToolEnvironmentVariable).filter(
+                    ToolEnvironmentVariable.tev_tol_id == tool.tol_id
+                ).all()
+                
+                # Convert to dictionary
+                environment_variables = {getattr(var, 'tev_key'): getattr(var, 'tev_value') for var in env_vars}
+                
+                # Create MCP config for this tool
+                tool_mcp_config = {
+                    "tool_id": tool.tol_id,
+                    "tool_name": tool.tol_name,
+                    "mcp_command": tool.tol_mcp_command,
+                    "env": environment_variables
+                }
+                agent_mcp_configs.append(tool_mcp_config)
+                
+                logger.info(f"Added MCP config for tool {tool.tol_name} (ID: {tool.tol_id})")
+        
+        logger.info(f"Created {len(agent_mcp_configs)} MCP server configurations for agent")
+        
+        # Create AI Chat Utility instance with agent-specific MCP configurations
         chat_util = AIChatUtility(
             llm_provider=llm_provider,
             model_name=getattr(llm_config, 'llc_model_cd', ''),
             api_key=getattr(llm_config, 'llc_api_key', None),
             base_url=getattr(llm_config, 'llc_endpoint_url', None),
             temperature=0.0,
-            system_prompt=getattr(agent, 'agt_system_prompt', None)
+            system_prompt=getattr(agent, 'agt_system_prompt', None),
+            agent_mcp_configs=agent_mcp_configs  # Pass agent-specific MCP configs
         )
         
         # 6. Build conversation history for AI context
