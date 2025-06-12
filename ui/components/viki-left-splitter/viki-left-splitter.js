@@ -294,7 +294,7 @@ class VikiLeftSplitter extends BaseComponent {
         sessionsList.innerHTML = this.chatSessions.map(session => `
             <div class="session-item" data-session-id="${session.id}">
                 <div class="session-icon">
-                    <img src="https://raw.githubusercontent.com/rahgadda/viki/refs/heads/main/ui/assets/icons/chat-icon.svg" alt="Chat" width="16" height="16">
+                    <img src="./ui/assets/icons/chat-icon.svg" alt="Chat" width="16" height="16">
                 </div>
                 <span class="session-name" title="${session.name}">${session.name}</span>
                 <div class="session-actions">
