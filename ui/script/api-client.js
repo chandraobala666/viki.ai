@@ -13,7 +13,7 @@ const defaultConfig = {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
     },
-    timeout: 30000 // 30 seconds
+    timeout: 300000 // 3 minutes
 };
 
 /**
