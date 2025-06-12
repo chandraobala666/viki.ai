@@ -54,11 +54,67 @@ class VikiMarkdown extends BaseComponent {
         this.render();
     }
 
+    // Parse markdown tables
+    parseMarkdownTables(markdown) {
+        // Regular expression to match markdown tables
+        const tableRegex = /^\|(.+)\|\s*\n\|[\s\-\|:]+\|\s*\n((?:\|.+\|\s*\n?)*)/gm;
+        
+        return markdown.replace(tableRegex, (match, headerRow, bodyRows) => {
+            // Parse header row
+            const headers = headerRow.split('|').map(h => h.trim()).filter(h => h);
+            
+            // Parse body rows
+            const rows = bodyRows.trim().split('\n').map(row => {
+                if (row.startsWith('|') && row.endsWith('|')) {
+                    return row.slice(1, -1).split('|').map(cell => cell.trim());
+                }
+                return [];
+            }).filter(row => row.length > 0);
+            
+            // Build HTML table with minimal whitespace
+            let tableHtml = '<table><thead><tr>';
+            headers.forEach(header => {
+                tableHtml += `<th>${this.escapeHtml(header)}</th>`;
+            });
+            tableHtml += '</tr></thead><tbody>';
+            
+            rows.forEach(row => {
+                tableHtml += '<tr>';
+                row.forEach((cell, index) => {
+                    if (index < headers.length) {
+                        // Process markdown within table cells
+                        let cellContent = cell;
+                        // Apply basic markdown formatting to cell content
+                        cellContent = cellContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                        cellContent = cellContent.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                        cellContent = cellContent.replace(/`(.*?)`/g, '<code>$1</code>');
+                        cellContent = cellContent.replace(/\[([^\]]*)\]\(([^\)]*)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+                        
+                        tableHtml += `<td>${cellContent}</td>`;
+                    }
+                });
+                tableHtml += '</tr>';
+            });
+            
+            tableHtml += '</tbody></table>';
+            return tableHtml;
+        });
+    }
+
     // Simple markdown to HTML converter
     markdownToHtml(markdown) {
         if (!markdown) return '';
 
         let html = markdown;
+
+        // Tables - process first to avoid interference with other formatting
+        html = this.parseMarkdownTables(html);
+
+        // Code blocks (triple backticks) - process before other formatting
+        html = html.replace(/```([a-z]*)\n([\s\S]*?)\n```/gim, (match, lang, code) => {
+            const escapedCode = this.escapeHtml(code);
+            return `<pre><code class="language-${lang}">${escapedCode}</code></pre>`;
+        });
 
         // Headers
         html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
@@ -66,18 +122,12 @@ class VikiMarkdown extends BaseComponent {
         html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
         // Bold
-        html = html.replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>');
-        html = html.replace(/__(.*)/gim, '<strong>$1</strong>');
+        html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+        html = html.replace(/__(.*?)__/gim, '<strong>$1</strong>');
 
         // Italic
-        html = html.replace(/\*(.*)\*/gim, '<em>$1</em>');
-        html = html.replace(/_(.*)/gim, '<em>$1</em>');
-
-        // Code blocks (triple backticks)
-        html = html.replace(/```([a-z]*)\n([\s\S]*?)\n```/gim, (match, lang, code) => {
-            const escapedCode = this.escapeHtml(code);
-            return `<pre><code class="language-${lang}">${escapedCode}</code></pre>`;
-        });
+        html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+        html = html.replace(/_(.*?)_/gim, '<em>$1</em>');
 
         // Inline code
         html = html.replace(/`([^`]*)`/gim, '<code>$1</code>');
@@ -105,27 +155,46 @@ class VikiMarkdown extends BaseComponent {
 
         // Wrap consecutive <li> elements in <ul> or <ol>
         html = html.replace(/(<li>.*<\/li>)/gims, (match) => {
-            // Check if this is part of an ordered or unordered list
-            const lines = match.split('\n');
-            return '<ul>\n' + match + '\n</ul>';
+            return '<ul>' + match + '</ul>';
         });
 
-        // Line breaks
-        html = html.replace(/\n\n/gim, '</p><p>');
+        // Split content by tables to handle paragraph wrapping properly
+        const tablePlaceholder = '___TABLE_PLACEHOLDER___';
+        const tables = [];
+        let tableIndex = 0;
+        
+        // Extract tables and replace with placeholders
+        html = html.replace(/<table>.*?<\/table>/gims, (match) => {
+            tables.push(match);
+            return `${tablePlaceholder}${tableIndex++}`;
+        });
+
+        // Process paragraphs and line breaks for non-table content
+        html = html.replace(/\n\s*\n/gim, '</p><p>');
         html = html.replace(/\n/gim, '<br>');
 
         // Wrap in paragraphs
         html = '<p>' + html + '</p>';
 
-        // Clean up empty paragraphs and fix formatting
+        // Restore tables
+        tables.forEach((table, index) => {
+            html = html.replace(`${tablePlaceholder}${index}`, table);
+        });
+
+        // Clean up formatting
         html = html.replace(/<p><\/p>/gim, '');
         html = html.replace(/<p>(<h[1-6]>)/gim, '$1');
         html = html.replace(/(<\/h[1-6]>)<\/p>/gim, '$1');
         html = html.replace(/<p>(<hr>)<\/p>/gim, '$1');
-        html = html.replace(/<p>(<blockquote>.*<\/blockquote>)<\/p>/gim, '$1');
-        html = html.replace(/<p>(<pre>.*<\/pre>)<\/p>/gims, '$1');
-        html = html.replace(/<p>(<ul>.*<\/ul>)<\/p>/gims, '$1');
-        html = html.replace(/<p>(<ol>.*<\/ol>)<\/p>/gims, '$1');
+        html = html.replace(/<p>(<blockquote>.*?<\/blockquote>)<\/p>/gim, '$1');
+        html = html.replace(/<p>(<pre>.*?<\/pre>)<\/p>/gims, '$1');
+        html = html.replace(/<p>(<ul>.*?<\/ul>)<\/p>/gims, '$1');
+        html = html.replace(/<p>(<ol>.*?<\/ol>)<\/p>/gims, '$1');
+        html = html.replace(/<p>(<table>.*?<\/table>)<\/p>/gims, '$1');
+        
+        // Clean up any remaining extra spaces around tables
+        html = html.replace(/(<\/p>)\s*(<table>)/gims, '$1$2');
+        html = html.replace(/(<\/table>)\s*(<p>)/gims, '$1$2');
 
         return html;
     }

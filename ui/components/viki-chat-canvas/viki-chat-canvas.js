@@ -821,11 +821,12 @@ class VikiChatCanvas extends BaseComponent {
             if (pattern.test(content)) {
                 patternCount++;
                 matchedPatterns.push(pattern.source);
-                // If we find headers, code blocks, or lists, it's likely markdown
+                // If we find headers, code blocks, lists, or tables, it's likely markdown
                 if (pattern.source.includes('#{1,6}') || 
                     pattern.source.includes('```') || 
                     pattern.source.includes('[-*+]') ||
-                    pattern.source.includes('\\d+\\.')) {
+                    pattern.source.includes('\\d+\\.') ||
+                    pattern.source.includes('\\|.+\\|')) {
                     console.log('✅ Markdown detected (strong pattern):', pattern.source);
                     return true;
                 }

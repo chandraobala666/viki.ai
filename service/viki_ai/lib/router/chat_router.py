@@ -402,6 +402,7 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
             'ANTHROPIC': 'anthropic',
             'AZURE': 'azure',
             'HUGGINGFACE': 'huggingface',
+            'CEREBRAS': 'cerebras',
             'OPENROUTER': 'openrouter'
         }
         

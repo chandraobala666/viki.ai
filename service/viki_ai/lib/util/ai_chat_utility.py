@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_groq import ChatGroq
 from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
+from langchain_cerebras import ChatCerebras
 
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
@@ -139,11 +140,39 @@ class AIChatUtility:
                     model=self.model_name,
                     endpoint=self.base_url or "https://models.github.ai/inference"
                 )
-                
+
+            elif self.llm_provider == "huggingface":
+                if not self.api_key:
+                    raise ValueError("API key is required for HuggingFace")
+                if not self.model_name:
+                    raise ValueError("Model name is required for HuggingFace")
+
+                # os.environ["HUGGINGFACEHUB_API_TOKEN"] = self.api_key
+                llm = HuggingFaceEndpoint(
+                        huggingfacehub_api_token=self.api_key,
+                        repo_id=self.model_name,
+                        task="text-generation"
+                    )  # type: ignore
+                self.model = ChatHuggingFace(llm=llm)
+
+            elif self.llm_provider == "cerebras":
+                if not self.api_key:
+                    raise ValueError("API key is required for Cerebras")
+                if not self.model_name:
+                    raise ValueError("Model name is required for Cerebras")
+
+                self.model = ChatCerebras(
+                    model=self.model_name,
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature
+                )
+
             elif self.llm_provider == "openrouter":
                 if not self.api_key:
                     raise ValueError("API key is required for OpenRouter")
-                    
+                if not self.model_name:
+                    raise ValueError("Model name is required for OpenRouter")
+            
                 # Custom OpenRouter implementation
                 self.model = ChatOpenAI(
                     model=self.model_name,
