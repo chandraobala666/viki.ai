@@ -264,6 +264,8 @@ class VikiLLMCanvas extends BaseComponent {
                 return `<img src="${basePath}groq.svg" alt="Groq" width="32" height="32">`;
             case 'AZURE':
                 return `<img src="${basePath}azure.svg" alt="Azure" width="32" height="32">`;
+            case 'AWS':
+                return `<img src="${basePath}aws.svg" alt="AWS" width="32" height="32">`;
             case 'GOOGLE':
                 return `<img src="${basePath}google.svg" alt="Google" width="32" height="32">`;
             case 'OPENROUTER':

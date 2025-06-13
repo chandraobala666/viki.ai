@@ -13,6 +13,8 @@ from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_groq import ChatGroq
 from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
 from langchain_cerebras import ChatCerebras
+from langchain_aws import ChatBedrock
+from langchain_anthropic import ChatAnthropic
 
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
@@ -38,6 +40,7 @@ class AIChatUtility:
     def __init__(self, 
                  llm_provider: str = "ollama",
                  model_name: str = "qwen3:32b",
+                 config_file_content: Any= None,
                  api_key: Optional[str] = None,
                  base_url: Optional[str] = None,
                  temperature: float = 0.0,
@@ -59,9 +62,10 @@ class AIChatUtility:
         """
         self.llm_provider = llm_provider.lower()
         self.model_name = model_name
-        self.api_key = api_key
+        self.api_key = api_key.strip() if api_key else api_key
         self.base_url = base_url
         self.temperature = temperature
+        self.config_file_content = config_file_content or {}
         
         # Setup logging first
         self.logger = logging.getLogger(__name__)
@@ -179,7 +183,71 @@ class AIChatUtility:
                     temperature=self.temperature,
                     base_url="https://openrouter.ai/api/v1"
                 )
+
+            elif self.llm_provider == "anthropic":
+                if not self.api_key:
+                    raise ValueError("API key is required for Anthropic")
+                if not self.model_name:
+                    raise ValueError("Model name is required for Anthropic")
+
+                self.model = ChatAnthropic(
+                    model=self.model_name, # type: ignore
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature
+                )
+
+            elif self.llm_provider == "aws":
+                if not self.model_name:
+                    raise ValueError("Model name is required for AWS BedRock")
+                if not self.config_file_content:
+                    raise ValueError("Configuration file is required for AWS BedRock")
+
+                config_file_content = self.config_file_content
                 
+                # Ensure config_file_content is a dictionary
+                if not isinstance(config_file_content, dict):
+                    raise ValueError("Configuration file content must be a dictionary for AWS BedRock")
+                
+                # Extract AWS credentials from config_file_content
+                aws_access_key = config_file_content.get("access_key")
+                aws_secret_key = config_file_content.get("secret_key")
+                aws_region = config_file_content.get("region")
+                aws_account_id = config_file_content.get("account_id")
+                
+                # Trim whitespace from credentials if they exist
+                if aws_access_key:
+                    aws_access_key = aws_access_key.strip()
+                if aws_secret_key:
+                    aws_secret_key = aws_secret_key.strip()
+                if aws_region:
+                    aws_region = aws_region.strip()
+                
+                # Provide detailed error message about missing credentials
+                missing_fields = []
+                if not aws_access_key:
+                    missing_fields.append("access_key")
+                if not aws_secret_key:
+                    missing_fields.append("secret_key")
+                if not aws_region:
+                    missing_fields.append("region")
+                
+                if missing_fields:
+                    available_keys = list(config_file_content.keys())
+                    raise ValueError(
+                        f"AWS BedRock configuration is missing required fields: {missing_fields}. "
+                        f"Available keys in config: {available_keys}. "
+                        f"Please ensure your configuration file contains: access_key, secret_key, and region."
+                    )
+                
+                # Configure AWS credentials
+                self.model = ChatBedrock(
+                    model=self.model_name,
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region=aws_region,
+                    temperature=self.temperature
+                )
+
             else:
                 raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
                 

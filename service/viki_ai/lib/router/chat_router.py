@@ -6,12 +6,13 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
 import logging
-from datetime import datetime
+import json
 from datetime import datetime
 
 from ..model.chat import ChatSession, ChatMessage
 from ..model.agent import Agent
 from ..model.llm import LLMConfig
+from ..model.file_store import FileStore
 from ..model.db_session import get_db
 from .schemas import (
     ChatSessionCreate, ChatSessionUpdate, ChatSessionResponse,
@@ -403,7 +404,9 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
             'AZURE': 'azure',
             'HUGGINGFACE': 'huggingface',
             'CEREBRAS': 'cerebras',
-            'OPENROUTER': 'openrouter'
+            'OPENROUTER': 'openrouter',
+            'AWS': 'aws',
+            'GOOGLE': 'google'
         }
         
         llm_provider = provider_mapping.get(llm_config.llc_provider_type_cd.upper(), 'ollama')
@@ -449,11 +452,34 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
                 logger.info(f"Added MCP config for tool {tool.tol_name} (ID: {tool.tol_id})")
         
         logger.info(f"Created {len(agent_mcp_configs)} MCP server configurations for agent")
+
+        config_file_content = None
+        config_file_id = getattr(llm_config, 'llc_fls_id', '')
+        if not config_file_id:
+            logger.info(f"No configuration file ID found for LLMConfig {llm_config.llc_id}, using default settings")
+        else:
+            logger.info(f"Using configuration file ID {config_file_id} for LLMConfig {llm_config.llc_id}")
+            file_config = db.query(FileStore).filter(FileStore.fls_id == config_file_id).first()
+            if file_config is None:
+                logger.error(f"No configuration file found for ID {config_file_id}, using default settings")
+            else:
+                logger.info(f"Loaded configuration file content for ID {config_file_id}")
+                if isinstance(file_config.fls_file_content, bytes):
+                    config_file_content = file_config.fls_file_content.decode('utf-8')
+                    try:
+                        # Try to parse the content as JSON
+                        config_file_content = json.loads(config_file_content)
+                        logger.info("Successfully parsed config file content as JSON")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse config file content as JSON: {e}. Using raw string content.")
+                    logger.info("Converted config file content from binary to string")
+
         
         # Create AI Chat Utility instance with agent-specific MCP configurations
         chat_util = AIChatUtility(
             llm_provider=llm_provider,
             model_name=getattr(llm_config, 'llc_model_cd', ''),
+            config_file_content=config_file_content,
             api_key=getattr(llm_config, 'llc_api_key', None),
             base_url=getattr(llm_config, 'llc_endpoint_url', None),
             temperature=0.0,

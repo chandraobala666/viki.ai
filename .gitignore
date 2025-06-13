@@ -34,3 +34,4 @@ sqlite/
 service/langchain_mcp.py
 **/demo.txt
 **/demo.rest
+**/demo.json
