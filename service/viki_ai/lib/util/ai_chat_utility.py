@@ -147,7 +147,6 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for HuggingFace")
 
-                # os.environ["HUGGINGFACEHUB_API_TOKEN"] = self.api_key
                 llm = HuggingFaceEndpoint(
                         huggingfacehub_api_token=self.api_key,
                         repo_id=self.model_name,

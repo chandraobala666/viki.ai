@@ -39,6 +39,9 @@
 - **Chat**
   - End user interface to Talk to Agent. 
 
+## Notes
+- To improve ollama performance on Macbook Pro M4 run `sudo sysctl iogpu.wired_limit_mb=31200` replace 31200 with total ram - 10gb.
+
 ## Reference
 - [Langchain OAP](https://oap.langchain.com/)
 - [Langchain Opencanvas](https://opencanvas.langchain.com/)
