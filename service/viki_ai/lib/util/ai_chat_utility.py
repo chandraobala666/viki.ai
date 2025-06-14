@@ -15,6 +15,10 @@ from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
 from langchain_cerebras import ChatCerebras
 from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
+from openinference.instrumentation.langchain import LangChainInstrumentor
+
+import phoenix as px
+from phoenix.otel import register
 
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
@@ -24,6 +28,36 @@ from langgraph.prebuilt import create_react_agent
 
 # Import MCP test utility
 from .mcp_test_util import test_mcp_configuration, test_mcp_configuration_sync
+
+# Initialize Phoenix instrumentation globally
+# This should be done once per application startup
+def initialize_phoenix_instrumentation():
+    """Initialize Phoenix instrumentation for LangChain tracing."""
+    try:
+        # Launch Phoenix app and get session
+        session = px.launch_app()
+        
+        # Setup instrumentation
+        register(
+            project_name="viki-ai-langchain-traces",
+            endpoint="http://127.0.0.1:6006/v1/traces"
+        )
+        
+        # Instrument LangChain
+        LangChainInstrumentor().instrument()
+        
+        # Open Phoenix UI if session is available
+        if session:
+            session.view()
+        
+        logging.info("Phoenix instrumentation initialized successfully")
+        return session
+    except Exception as e:
+        logging.warning(f"Failed to initialize Phoenix instrumentation: {e}")
+        return None
+
+# Global Phoenix session - initialized once
+_phoenix_session = None
 
 
 class AIChatUtility:
@@ -99,6 +133,16 @@ class AIChatUtility:
         self.session_id = None
         self.message_history: List[Dict[str, Any]] = []
         
+        # Initialize Phoenix instrumentation for this instance
+        global _phoenix_session
+        if _phoenix_session is None:
+            _phoenix_session = initialize_phoenix_instrumentation()
+        
+        # Log Phoenix session status
+        if _phoenix_session:
+            self.logger.info("Phoenix instrumentation active for AIChatUtility")
+        else:
+            self.logger.warning("Phoenix instrumentation not available")
     def configure_llm(self) -> Any:
         """
         Configure and return the LLM model based on the provider.

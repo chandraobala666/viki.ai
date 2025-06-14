@@ -11,6 +11,7 @@ from .lib.db_config.db_connect import create_db_engine
 from .lib.util.version_util import get_version
 from .lib.router import get_routers
 from .lib.model.db_session import DatabaseSession
+from .lib.util.ai_chat_utility import initialize_phoenix_instrumentation
 
 def main():
     """
@@ -45,6 +46,14 @@ def main():
         # Initialize the database session
         DatabaseSession.initialize(DB_URL)
         DatabaseSession.create_tables()
+
+        # Initialize Phoenix/Arize instrumentation for AI observability
+        logger.info("Initializing Phoenix/Arize instrumentation...")
+        phoenix_session = initialize_phoenix_instrumentation()
+        if phoenix_session:
+            logger.info("Phoenix/Arize instrumentation initialized successfully")
+        else:
+            logger.warning("Phoenix/Arize instrumentation failed to initialize")
 
         # Get version from pyproject.toml
         version = get_version()
