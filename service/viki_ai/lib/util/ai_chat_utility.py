@@ -34,23 +34,23 @@ from .mcp_test_util import test_mcp_configuration, test_mcp_configuration_sync
 def initialize_phoenix_instrumentation():
     """Initialize Phoenix instrumentation for LangChain tracing."""
     try:
+        # Set environment variable for Phoenix project
+        import os
+        os.environ["PHOENIX_PROJECT_NAME"] = "viki-ai-langchain-traces"
+        
         # Launch Phoenix app and get session
         session = px.launch_app()
         
-        # Setup instrumentation
-        register(
-            project_name="viki-ai-langchain-traces",
-            endpoint="http://127.0.0.1:6006/v1/traces"
-        )
+        # Setup instrumentation with minimal configuration
+        register()
         
         # Instrument LangChain
         LangChainInstrumentor().instrument()
         
-        # Open Phoenix UI if session is available
-        if session:
-            session.view()
-        
         logging.info("Phoenix instrumentation initialized successfully")
+        logging.info(f"Phoenix UI available at: http://127.0.0.1:6006")
+        
+        # Return session without automatically opening view to avoid UI issues
         return session
     except Exception as e:
         logging.warning(f"Failed to initialize Phoenix instrumentation: {e}")
@@ -58,6 +58,40 @@ def initialize_phoenix_instrumentation():
 
 # Global Phoenix session - initialized once
 _phoenix_session = None
+
+def open_phoenix_ui():
+    """Open Phoenix UI in browser. Call this after some traces are generated."""
+    global _phoenix_session
+    try:
+        if _phoenix_session:
+            _phoenix_session.view()
+            logging.info("Phoenix UI opened in browser")
+        else:
+            logging.warning("Phoenix session not available. Initialize Phoenix first.")
+    except Exception as e:
+        logging.warning(f"Failed to open Phoenix UI: {e}")
+
+def get_phoenix_session():
+    """Get the global Phoenix session."""
+    return _phoenix_session
+
+def initialize_phoenix_project():
+    """Generate an initial trace to create the Phoenix project."""
+    try:
+        # This will create a minimal trace to initialize the project in Phoenix
+        from opentelemetry import trace
+        from opentelemetry.trace import Status, StatusCode
+        
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("phoenix_initialization") as span:
+            span.set_attribute("service.name", "viki-ai")
+            span.set_attribute("project.name", "viki-ai-langchain-traces")
+            span.set_status(Status(StatusCode.OK, "Phoenix project initialized"))
+            logging.info("Phoenix project initialized with initial trace")
+        return True
+    except Exception as e:
+        logging.warning(f"Failed to initialize Phoenix project: {e}")
+        return False
 
 
 class AIChatUtility:
@@ -176,7 +210,7 @@ class AIChatUtility:
                     raise ValueError("API key is required for Groq")
                 self.model = ChatGroq(
                     model=self.model_name,
-                    api_key=SecretStr(self.api_key),
+                    api_key=SecretStr(self.api_key), # type: ignore
                     temperature=self.temperature
                 )
                 

@@ -11,7 +11,7 @@ from .lib.db_config.db_connect import create_db_engine
 from .lib.util.version_util import get_version
 from .lib.router import get_routers
 from .lib.model.db_session import DatabaseSession
-from .lib.util.ai_chat_utility import initialize_phoenix_instrumentation
+from .lib.util.ai_chat_utility import initialize_phoenix_instrumentation, initialize_phoenix_project
 
 def main():
     """
@@ -52,6 +52,15 @@ def main():
         phoenix_session = initialize_phoenix_instrumentation()
         if phoenix_session:
             logger.info("Phoenix/Arize instrumentation initialized successfully")
+            logger.info("Phoenix UI will be available at: http://127.0.0.1:6006")
+            
+            # Initialize the Phoenix project with an initial trace
+            if initialize_phoenix_project():
+                logger.info("Phoenix project initialized with initial trace")
+            else:
+                logger.warning("Failed to initialize Phoenix project")
+                
+            logger.info("Note: The UI will show more traces after you make AI chat requests")
         else:
             logger.warning("Phoenix/Arize instrumentation failed to initialize")
 
