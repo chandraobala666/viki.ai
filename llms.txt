@@ -1,0 +1,229 @@
+# VIKI AI - Supported LLM Providers and Models
+
+VIKI AI is an Agent Platform that supports multiple LLM providers through LangChain integration. This document lists all supported providers and their configurations.
+
+## Supported LLM Providers
+
+### 1. OpenAI
+- **Provider Code**: `OPENAI`
+- **LangChain Integration**: `langchain-openai`
+- **Required Parameters**: API Key
+- **Default Endpoint**: `https://api.openai.com/v1`
+- **Popular Models**:
+  - gpt-4-turbo
+  - gpt-4
+  - gpt-3.5-turbo
+  - gpt-4o
+  - gpt-4o-mini
+
+### 2. Anthropic
+- **Provider Code**: `ANTHROPIC` 
+- **LangChain Integration**: `langchain-anthropic`
+- **Required Parameters**: API Key
+- **Default Endpoint**: `https://api.anthropic.com/v1`
+- **Popular Models**:
+  - claude-3-opus-20240229
+  - claude-3-sonnet-20240229
+  - claude-3-haiku-20240307
+  - claude-3.5-sonnet-20241022
+
+### 3. Ollama (Local)
+- **Provider Code**: `OLLAMA`
+- **LangChain Integration**: `langchain-ollama`
+- **Required Parameters**: None (local deployment)
+- **Default Endpoint**: `http://localhost:11434`
+- **Popular Models**:
+  - llama3.2
+  - qwen3:32b
+  - mistral
+  - codellama
+  - phi3
+  - gemma
+
+### 4. Groq
+- **Provider Code**: `GROQ`
+- **LangChain Integration**: `langchain-groq`
+- **Required Parameters**: API Key
+- **Default Endpoint**: Groq's API endpoint
+- **Popular Models**:
+  - llama-3.1-70b-versatile
+  - llama-3.1-8b-instant
+  - mixtral-8x7b-32768
+  - gemma-7b-it
+
+### 5. Hugging Face
+- **Provider Code**: `HUGGINGFACE`
+- **LangChain Integration**: `langchain-huggingface`
+- **Required Parameters**: API Key (HF Token)
+- **Default Endpoint**: Hugging Face Inference API
+- **Popular Models**:
+  - microsoft/DialoGPT-medium
+  - microsoft/DialoGPT-large
+  - facebook/blenderbot-400M-distill
+  - EleutherAI/gpt-j-6b
+
+### 6. Azure AI
+- **Provider Code**: `AZURE`
+- **LangChain Integration**: `langchain-azure-ai`
+- **Required Parameters**: API Key
+- **Default Endpoint**: `https://models.github.ai/inference`
+- **Popular Models**:
+  - gpt-4o
+  - gpt-4o-mini
+  - llama-3.1-405b-instruct
+  - mistral-large
+
+### 7. OpenRouter
+- **Provider Code**: `OPENROUTER`
+- **LangChain Integration**: `langchain-openai` (custom base URL)
+- **Required Parameters**: API Key
+- **Default Endpoint**: `https://openrouter.ai/api/v1`
+- **Popular Models**:
+  - anthropic/claude-3.5-sonnet
+  - openai/gpt-4o
+  - meta-llama/llama-3.1-405b-instruct
+  - google/gemini-pro-1.5
+
+### 8. Cerebras
+- **Provider Code**: `CEREBRAS`
+- **LangChain Integration**: `langchain-cerebras`
+- **Required Parameters**: API Key
+- **Default Endpoint**: Cerebras API endpoint
+- **Popular Models**:
+  - llama3.1-70b
+  - llama3.1-8b
+
+### 9. AWS Bedrock
+- **Provider Code**: `AWS`
+- **LangChain Integration**: `langchain-aws`
+- **Required Parameters**: AWS Access Key, Secret Key, Region (via config file)
+- **Configuration**: Requires JSON config file with AWS credentials
+- **Popular Models**:
+  - anthropic.claude-3-sonnet-20240229-v1:0
+  - anthropic.claude-3-haiku-20240307-v1:0
+  - meta.llama3-70b-instruct-v1:0
+  - amazon.titan-text-express-v1
+
+### 10. Google (Vertex AI)
+- **Provider Code**: `GOOGLE`
+- **LangChain Integration**: Future support planned
+- **Required Parameters**: Google Cloud credentials
+- **Popular Models**:
+  - gemini-pro
+  - gemini-pro-vision
+  - text-bison
+  - chat-bison
+
+### 11. Oracle (Future Support)
+- **Provider Code**: `ORACLE`
+- **Status**: Planned for future releases
+- **Integration**: To be implemented
+
+## Configuration Examples
+
+### Basic LLM Configuration
+```json
+{
+  "providerTypeCode": "OPENAI",
+  "modelCode": "gpt-4",
+  "endpointUrl": "https://api.openai.com/v1",
+  "apiKey": "your-api-key-here"
+}
+```
+
+### AWS Bedrock Configuration
+```json
+{
+  "providerTypeCode": "AWS",
+  "modelCode": "anthropic.claude-3-sonnet-20240229-v1:0",
+  "fileStore": "config-file-id-with-aws-credentials"
+}
+```
+
+### Ollama Local Configuration
+```json
+{
+  "providerTypeCode": "OLLAMA",
+  "modelCode": "qwen3:32b",
+  "endpointUrl": "http://localhost:11434"
+}
+```
+
+## Features and Capabilities
+
+### Model Configuration Parameters
+- **Provider Type Code**: Identifies the LLM provider
+- **Model Code**: Specific model identifier for the provider
+- **Endpoint URL**: Custom API endpoint (optional for most providers)
+- **API Key**: Authentication key (required for cloud providers)
+- **File Store**: Configuration file for complex setups (AWS, etc.)
+- **Temperature**: Controls randomness in responses (0.0 to 1.0)
+
+### Agent Integration
+- **Tools Integration**: MCP (Model Context Protocol) support for tool calling
+- **RAG Support**: Integration with Milvus vector database for retrieval
+- **Multi-Agent Orchestration**: LangGraph-based agent coordination
+- **Persistent Connections**: Efficient MCP tool loading and management
+
+### Chat Features
+- **Session Management**: Persistent chat sessions with message history
+- **System Prompts**: Customizable system prompts per agent
+- **Stream Responses**: Real-time streaming for better UX
+- **Error Handling**: Comprehensive error handling and logging
+
+## Performance Notes
+
+### Ollama Optimization (macOS)
+For improved performance on MacBook Pro M4, run:
+```bash
+sudo sysctl iogpu.wired_limit_mb=31200
+```
+Replace 31200 with (total RAM - 10GB).
+
+### Provider-Specific Considerations
+- **OpenAI**: Rate limits apply based on subscription tier
+- **Anthropic**: Claude models have different context windows
+- **Ollama**: Performance depends on local hardware
+- **Groq**: Very fast inference but limited model selection
+- **AWS Bedrock**: Requires proper IAM permissions
+- **Azure**: Uses GitHub Models marketplace integration
+
+## Dependencies
+
+Core dependencies for LLM support:
+- `langchain>=0.3.25`
+- `langchain-openai>=0.3.21`
+- `langchain-anthropic>=0.3.15`
+- `langchain-ollama>=0.3.3`
+- `langchain-groq>=0.3.2`
+- `langchain-huggingface>=0.2.0`
+- `langchain-azure-ai>=0.1.4`
+- `langchain-cerebras>=0.5.0`
+- `langchain-aws>=0.2.25`
+- `mcp[cli]>=1.9.3`
+- `langchain-mcp-adapters>=0.1.7`
+- `langgraph>=0.4.8`
+
+## API Endpoints
+
+The VIKI AI platform provides REST API endpoints for LLM management:
+- `GET /api/llm/` - List all LLM configurations
+- `POST /api/llm/` - Create new LLM configuration
+- `GET /api/llm/{llm_id}` - Get specific LLM configuration
+- `PUT /api/llm/{llm_id}` - Update LLM configuration
+- `DELETE /api/llm/{llm_id}` - Delete LLM configuration
+- `POST /api/chat/ai-chat` - Chat with configured LLM via agent
+
+## References
+
+- [LangChain Documentation](https://www.langchain.com/)
+- [LangGraph](https://www.langchain.com/langgraph)
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction)
+- [LangChain OpenCanvas](https://opencanvas.langchain.com/)
+- [LangChain OAP](https://oap.langchain.com/)
+
+## Version Information
+
+- **VIKI AI Version**: 0.1.0
+- **Python Requirement**: >=3.11
+- **Last Updated**: June 2025
