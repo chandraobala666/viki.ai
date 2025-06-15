@@ -1,3 +1,16 @@
+/**
+ * VikiMarkdown Component
+ * 
+ * A markdown rendering component that uses the marked library for parsing.
+ * Requires: marked.js (https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.7/marked.min.js)
+ * 
+ * Features:
+ * - GitHub Flavored Markdown support
+ * - Custom rendering options
+ * - Fallback to custom parser if marked is not available
+ * - Security considerations for link handling
+ */
+
 import { BaseComponent } from '../base/base.js';
 
 class VikiMarkdown extends BaseComponent {
@@ -16,10 +29,51 @@ class VikiMarkdown extends BaseComponent {
             const shadowRoot = await super.connectedCallback();
             if (shadowRoot) {
                 this.setupEventListeners(shadowRoot);
+                this.configureMarked();
                 this.render();
             }
         } catch (error) {
             console.error('Error in VikiMarkdown connectedCallback:', error);
+        }
+   }
+
+    // Configure marked library options
+    configureMarked() {
+        if (this.isMarkedAvailable()) {
+            // Configure marked options for better security and rendering
+            marked.setOptions({
+                breaks: true,
+                gfm: true, // GitHub Flavored Markdown
+                sanitize: false, // Allow HTML (be careful with user input)
+                silent: false,
+                smartLists: true,
+                smartypants: false
+            });
+
+            // Optional: Configure custom renderer for specific elements
+            this.setupCustomRenderer();
+        }
+    }
+
+    // Setup custom renderer for marked library
+    setupCustomRenderer() {
+        if (this.isMarkedAvailable()) {
+            const renderer = new marked.Renderer();
+            
+            // Customize link rendering to always open in new tab
+            renderer.link = function(href, title, text) {
+                return `<a href="${href}" title="${title || ''}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+            };
+
+            // Customize code block rendering
+            renderer.code = function(code, language) {
+                const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<pre><code class="language-${language || ''}">${escapedCode}</code></pre>`;
+            };
+
+            marked.setOptions({
+                renderer: renderer
+            });
         }
     }
 
@@ -214,8 +268,15 @@ class VikiMarkdown extends BaseComponent {
         if (!contentElement) return;
 
         if (this._useHtml) {
-            // If use-html is enabled, render the markdown as HTML
-            contentElement.innerHTML = this.markdownToHtml(this._markdown);
+            // Check if marked library is available
+            if (this.isMarkedAvailable()) {
+                // Use marked library to convert markdown to HTML
+                contentElement.innerHTML = marked.parse(this._markdown);
+            } else {
+                // Fallback to custom markdown parser if marked is not available
+                console.warn('Marked library not available, using fallback parser');
+                contentElement.innerHTML = this.markdownToHtml(this._markdown);
+            }
         } else {
             // Otherwise, just display as plain text
             contentElement.textContent = this._markdown;
@@ -239,12 +300,30 @@ class VikiMarkdown extends BaseComponent {
 
     // Export as HTML
     exportAsHtml() {
-        return this.markdownToHtml(this._markdown);
+        if (this.isMarkedAvailable()) {
+            return marked.parse(this._markdown);
+        } else {
+            // Fallback to custom markdown parser
+            return this.markdownToHtml(this._markdown);
+        }
     }
 
     // Clear content
     clear() {
         this.setMarkdown('');
+    }
+
+    // Check if marked library is available and properly loaded
+    isMarkedAvailable() {
+        return typeof marked !== 'undefined' && typeof marked.parse === 'function';
+    }
+
+    // Get the version of marked library if available
+    getMarkedVersion() {
+        if (this.isMarkedAvailable() && marked.defaults) {
+            return marked.defaults.version || 'unknown';
+        }
+        return null;
     }
 }
 
