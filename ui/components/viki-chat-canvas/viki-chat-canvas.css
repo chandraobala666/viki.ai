@@ -796,14 +796,69 @@ div.html-modal-overlay viki-html.force-light-theme .viki-html {
         font-size: 1rem;
     }
     
-    .markdown-modal-body,
-    .html-modal-body {
+    .markdown-modal_body,
+    .html-modal_body {
         margin: 0.5rem;
     }
     
-    .markdown-modal-body viki-markdown,
-    .html-modal-body viki-html {
+    .markdown-modal_body viki-markdown,
+    .html-modal_body viki-html {
         min-height: 400px;
         margin: 0.5rem;
     }
+}
+
+/* Markdown preview styling */
+.markdown-preview {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+    margin: 0.5em 0 0.3em 0;
+    font-weight: 600;
+    color: inherit;
+}
+
+.markdown-preview h1 { font-size: 1.1em; }
+.markdown-preview h2 { font-size: 1.05em; }
+.markdown-preview h3 { font-size: 1em; }
+
+.markdown-preview strong {
+    font-weight: 600;
+}
+
+.markdown-preview em {
+    font-style: italic;
+}
+
+.markdown-preview code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-family: 'Courier New', monospace;
+}
+
+.markdown-preview a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.markdown-preview a:hover {
+    text-decoration: underline;
+}
+
+/* User message markdown preview adjustments */
+.user-message .markdown-preview code {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.user-message .markdown-preview a {
+    color: #bfdbfe;
 }

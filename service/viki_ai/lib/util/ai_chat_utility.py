@@ -165,7 +165,10 @@ class AIChatUtility:
         self.tools = None
         self.agent = None
         self.session_id = None
-        self.message_history: List[Dict[str, Any]] = []
+        # Initialize message history with system prompt
+        self.message_history: List[Dict[str, Any]] = [
+            {"role": "system", "content": self.system_prompt}
+        ]
         
         # Initialize Phoenix instrumentation for this instance
         global _phoenix_session
@@ -800,7 +803,14 @@ class AIChatUtility:
             # Prepare messages for the agent (convert to langchain format)
             if include_history:
                 # Convert history to langchain message format
+                # Ensure system prompt is always first if not already present
                 langchain_messages = []
+                
+                # Check if first message is system prompt, if not add it
+                if not self.message_history or self.message_history[0]["role"] != "system":
+                    from langchain_core.messages import SystemMessage
+                    langchain_messages.append(SystemMessage(content=self.system_prompt))
+                
                 for msg in self.message_history:
                     if msg["role"] == "system":
                         from langchain_core.messages import SystemMessage
@@ -818,7 +828,20 @@ class AIChatUtility:
                     HumanMessage(content=user_message)
                 ]
             
+            # Log the structure of messages being sent to the agent
+            self.logger.debug(f"Sending {len(langchain_messages)} messages to agent:")
+            for i, msg in enumerate(langchain_messages[:3]):  # Log first 3 messages
+                msg_type = type(msg).__name__
+                content_preview = getattr(msg, 'content', '')[:100] if hasattr(msg, 'content') else 'No content'
+                self.logger.debug(f"  Message {i}: {msg_type} - {content_preview}...")
+            
             self.logger.info(f"Processing user query: {user_message}")
+            self.logger.debug(f"Current message history length: {len(self.message_history)}")
+            
+            # Log first few messages for debugging system prompt inclusion
+            if self.message_history:
+                first_msg = self.message_history[0]
+                self.logger.debug(f"First message in history - Role: {first_msg.get('role')}, Content preview: {first_msg.get('content', '')[:100]}...")
             
             # Check if we should use agent-specific MCP configurations, legacy approach, or no tools
             agent_response = None
@@ -947,7 +970,7 @@ class AIChatUtility:
         self.message_history = [
             {"role": "system", "content": self.system_prompt}
         ]
-        self.logger.info("Message history cleared")
+        self.logger.info("Message history cleared, system prompt retained")
     
     def get_available_mcp_functions(self) -> List[Dict[str, str]]:
         """
@@ -992,7 +1015,24 @@ class AIChatUtility:
             "mcp_function_count": mcp_function_count,
             "created_at": self.session_id.split('_')[-2] + '_' + self.session_id.split('_')[-1] if self.session_id else None
         }
-
+    
+    def update_system_prompt(self, new_system_prompt: str) -> None:
+        """
+        Update the system prompt and refresh the message history.
+        
+        Args:
+            new_system_prompt: The new system prompt to use
+        """
+        self.system_prompt = new_system_prompt
+        
+        # Update the system prompt in message history
+        if self.message_history and self.message_history[0]["role"] == "system":
+            self.message_history[0]["content"] = new_system_prompt
+        else:
+            # Insert system prompt at the beginning if not present
+            self.message_history.insert(0, {"role": "system", "content": new_system_prompt})
+        
+        self.logger.info("System prompt updated successfully")
 
 # ============================================================================
 # USAGE EXAMPLE AND CONVENIENCE FUNCTIONS

@@ -490,12 +490,9 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
         # 6. Build conversation history for AI context
         # Convert database messages to AI utility format
         conversation_history = []
-        system_prompt = getattr(agent, 'agt_system_prompt', None)
-        if system_prompt:
-            conversation_history.append({
-                "role": "system",
-                "content": system_prompt
-            })
+        
+        # Note: Don't add system prompt here since AIChatUtility already initialized 
+        # message_history with the system prompt. Let's just add the historical messages.
         
         for msg in messages:
             # Extract content from the message
@@ -512,17 +509,12 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
                 "content": content
             })
         
-        # Add current user message
-        conversation_history.append({
-            "role": "user",
-            "content": request.message
-        })
-        
-        # 7. Manually set the conversation history in the AI utility
-        chat_util.message_history = conversation_history
+        # 7. Append historical messages to the existing message history (which already has system prompt)
+        # Only add historical messages, not the current user message yet
+        chat_util.message_history.extend(conversation_history)
         chat_util.session_id = f"session_{request.chatSessionId}"
         
-        logger.info(f"Generating AI response with {len(conversation_history)} messages in context")
+        logger.info(f"Generating AI response with {len(chat_util.message_history)} messages in existing context")
         
         # 8. Generate AI response
         ai_response = await chat_util.generate_response(

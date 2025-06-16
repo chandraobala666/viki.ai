@@ -167,9 +167,10 @@ class VikiHtml extends BaseComponent {
     parseContent(content) {
         if (!content) return { html: '', css: '', js: '' };
 
-        let html = content;
+        let html = '';
         let css = '';
         let js = '';
+        let hasCodeBlocks = false;
 
         // Extract CSS from style tags
         const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gim;
@@ -185,12 +186,13 @@ class VikiHtml extends BaseComponent {
             js += scriptMatch[1] + '\n';
         }
 
-        // Extract HTML/CSS/JS from code blocks
-        const codeBlockRegex = /```(html|css|javascript|js)\n([\s\S]*?)\n```/gim;
+        // Extract HTML/CSS/JS from code blocks - make regex more flexible
+        const codeBlockRegex = /```(html|css|javascript|js)\s*([\s\S]*?)\s*```/gim;
         let codeMatch;
         while ((codeMatch = codeBlockRegex.exec(content)) !== null) {
+            hasCodeBlocks = true;
             const language = codeMatch[1].toLowerCase();
-            const code = codeMatch[2];
+            const code = codeMatch[2].trim();
             
             if (language === 'html') {
                 // Parse HTML code blocks for additional CSS and JS
@@ -203,9 +205,11 @@ class VikiHtml extends BaseComponent {
             } else if (language === 'javascript' || language === 'js') {
                 js += '\n' + code;
             }
-            
-            // Remove the code block from HTML to avoid duplication
-            html = html.replace(codeMatch[0], '');
+        }
+
+        // If no code blocks found, treat the entire content as HTML
+        if (!hasCodeBlocks) {
+            html = content;
         }
 
         return {
@@ -282,13 +286,22 @@ class VikiHtml extends BaseComponent {
                 },
                 // Provide access to the rendered content element
                 document: {
-                    getElementById: (id) => this._shadowRoot.getElementById(id),
-                    querySelector: (selector) => this._shadowRoot.querySelector(selector),
-                    querySelectorAll: (selector) => this._shadowRoot.querySelectorAll(selector),
+                    getElementById: (id) => {
+                        const contentElement = this._shadowRoot.getElementById('html-content');
+                        return contentElement ? contentElement.querySelector(`#${id}`) : null;
+                    },
+                    querySelector: (selector) => {
+                        const contentElement = this._shadowRoot.getElementById('html-content');
+                        return contentElement ? contentElement.querySelector(selector) : null;
+                    },
+                    querySelectorAll: (selector) => {
+                        const contentElement = this._shadowRoot.getElementById('html-content');
+                        return contentElement ? contentElement.querySelectorAll(selector) : [];
+                    },
                     createElement: (tagName) => document.createElement(tagName),
                     addEventListener: (event, handler, options) => {
-                        // Add event listener to the shadow root container
-                        const container = this._shadowRoot.querySelector('.content');
+                        // Add event listener to the html content container
+                        const container = this._shadowRoot.getElementById('html-content');
                         if (container) {
                             if (event === 'DOMContentLoaded') {
                                 // Since we're in a controlled environment, fire DOMContentLoaded immediately
@@ -299,13 +312,13 @@ class VikiHtml extends BaseComponent {
                         }
                     },
                     removeEventListener: (event, handler, options) => {
-                        const container = this._shadowRoot.querySelector('.content');
+                        const container = this._shadowRoot.getElementById('html-content');
                         if (container) {
                             container.removeEventListener(event, handler, options);
                         }
                     },
-                    body: this._shadowRoot.querySelector('.content') || this._shadowRoot,
-                    documentElement: this._shadowRoot,
+                    body: this._shadowRoot.getElementById('html-content') || this._shadowRoot,
+                    documentElement: this._shadowRoot.getElementById('html-content') || this._shadowRoot,
                     readyState: 'complete'
                 },
                 // Add window-like properties

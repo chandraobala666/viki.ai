@@ -402,6 +402,15 @@ class VikiChatCanvas extends BaseComponent {
             content = 'No content';
         }
 
+        // Filter out <think> tags from bot responses
+        if (type === 'bot') {
+            content = this.filterThinkTags(content);
+            console.log(`🚀 Filtered stored message content after removing <think> tags: ${content}`);
+        }
+
+        // Filter out content between <think> tags
+        content = this.filterThinkTags(content);
+
         const messageDiv = document.createElement('div');
         messageDiv.className = type === 'user' ? 'user-message' : 'bot-message';
         
@@ -441,14 +450,10 @@ class VikiChatCanvas extends BaseComponent {
             // Display placeholder instead of stripped markdown
             displayContent = `<p><em>Markdown content hidden. Click 'View Markdown' to view.</em></p>`;
         } else {
-            // Display regular escaped text for non-markdown/non-HTML content
-            displayContent = `<p>${this.escapeHtml(content)}</p>`;
-            // Add debug info to see what's happening
-            if (type === 'bot') {
-                displayContent += `<small style="color: #666; font-size: 0.8em; display: block; margin-top: 5px;">
-                    Debug: HTML=${hasHtml}, Markdown=${hasMarkdown}
-                </small>`;
-            }
+            // Display regular escaped text for non-markdown/non-HTML content with proper newline handling
+            const escapedContent = this.escapeHtml(content);
+            const contentWithBreaks = escapedContent.replace(/\n/g, '<br>');
+            displayContent = `<p>${contentWithBreaks}</p>`;
         }
 
         messageDiv.innerHTML = `
@@ -642,14 +647,38 @@ class VikiChatCanvas extends BaseComponent {
         }
     }
 
+    // Function to filter out content between <think> tags
+    filterThinkTags(content) {
+        if (!content || typeof content !== 'string') {
+            return content;
+        }
+        
+        // Remove content between <think> and </think> tags (case insensitive)
+        // This regex handles multiline content and whitespace variations
+        const filtered = content.replace(/<think\s*>[\s\S]*?<\/think\s*>/gi, '');
+        
+        // Clean up any extra whitespace that might be left
+        return filtered.trim();
+    }
+
     addMessage(type, content) {
         console.log(`🚀 addMessage called with type: ${type}, content: ${content}`);
+        
+        // Filter out <think> tags from bot responses
+        if (type === 'bot') {
+            content = this.filterThinkTags(content);
+            console.log(`🚀 Filtered content after removing <think> tags: ${content}`);
+        }
+        
         const chatMessages = this.shadowRoot.querySelector('#chatMessages');
         console.log('chatMessages element:', chatMessages);
         if (!chatMessages) {
             console.log('❌ No chatMessages element found in addMessage');
             return;
         }
+
+        // Filter out content between <think> tags
+        content = this.filterThinkTags(content);
 
         const messageDiv = document.createElement('div');
         messageDiv.className = type === 'user' ? 'user-message' : 'bot-message';
@@ -686,17 +715,14 @@ class VikiChatCanvas extends BaseComponent {
             messageDiv.setAttribute('data-message-id', messageId);
             messageDiv.setAttribute('data-message-content', content);
             
-            // Display placeholder and hide markdown in chat view
-            displayContent = `<p><em>Markdown content hidden. Click 'View Markdown' to view.</em></p>`;
+            // Show a preview of the content with basic formatting preserved
+            const previewContent = this.createMarkdownPreview(content);
+            displayContent = `<div class="markdown-preview">${previewContent}</div>`;
         } else {
-            // Display regular escaped text for non-markdown/non-HTML content
-            displayContent = `<p>${this.escapeHtml(content)}</p>`;
-            // Add debug info to see what's happening for new messages too
-            if (type === 'bot') {
-                displayContent += `<small style="color: #666; font-size: 0.8em; display: block; margin-top: 5px;">
-                    Debug: HTML=${hasHtml}, Markdown=${hasMarkdown}
-                </small>`;
-            }
+            // Display regular escaped text for non-markdown/non-HTML content with proper newline handling
+            const escapedContent = this.escapeHtml(content);
+            const contentWithBreaks = escapedContent.replace(/\n/g, '<br>');
+            displayContent = `<p>${contentWithBreaks}</p>`;
         }
 
         messageDiv.innerHTML = `
@@ -722,6 +748,50 @@ class VikiChatCanvas extends BaseComponent {
             timestamp: new Date()
         });
         console.log(`✅ ${type} message stored in local array`);
+    }
+
+    // Create a basic preview of markdown content for display in chat
+    createMarkdownPreview(content) {
+        if (!content || typeof content !== 'string') return '';
+        
+        // Filter out <think> tags first
+        content = this.filterThinkTags(content);
+        
+        // Basic markdown-to-HTML conversion for preview
+        let preview = this.escapeHtml(content);
+        
+        // Convert basic markdown patterns to HTML
+        preview = preview
+            // Headers (process larger headers first to avoid conflicts)
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+            // Bold text (handle ** before * to avoid conflicts)
+            .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+            // Italic text (after bold to avoid conflicts)
+            .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+            .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>')
+            // Bullet points (preserve indentation)
+            .replace(/^(\s*)[-*+]\s+(.+)$/gm, '$1• $2')
+            // Numbered lists
+            .replace(/^(\s*)(\d+)\.\s+(.+)$/gm, '$1$2. $3')
+            // Inline code (before links to avoid conflicts)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+            // Line breaks (preserve paragraph structure)
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph tags if not already wrapped
+        if (!preview.includes('<h') && !preview.includes('<p>')) {
+            preview = `<p>${preview}</p>`;
+        } else if (preview.includes('</p><p>')) {
+            preview = `<p>${preview}</p>`;
+        }
+        
+        return preview;
     }
 
     showTypingIndicator() {
@@ -969,6 +1039,9 @@ class VikiChatCanvas extends BaseComponent {
     extractHtmlFromCodeBlocks(content) {
         if (!content) return '';
         
+        // Filter out <think> tags first
+        content = this.filterThinkTags(content);
+        
         // First, try to extract HTML from code blocks
         const htmlBlockRegex = /```html\s*([\s\S]*?)\s*```/gi;
         const matches = content.match(htmlBlockRegex);
@@ -1007,7 +1080,8 @@ class VikiChatCanvas extends BaseComponent {
     stripMarkdown(content) {
         if (!content) return '';
 
-        let text = content;
+        // Filter out <think> tags first
+        let text = this.filterThinkTags(content);
 
         // Remove code blocks first (to avoid processing their content)
         text = text.replace(/```[\s\S]*?```/g, '[Code Block]');
@@ -1051,6 +1125,9 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     showMarkdownModal(messageId, content) {
+        // Filter out <think> tags before displaying in modal
+        content = this.filterThinkTags(content);
+        
         // Create modal HTML
         const modal = document.createElement('div');
         modal.className = 'markdown-modal-overlay';
@@ -1110,6 +1187,10 @@ class VikiChatCanvas extends BaseComponent {
     showHtmlModal(messageId, content) {
         console.log('🖥️ Opening HTML modal for message:', messageId);
         console.log('🖥️ Raw content:', content);
+        
+        // Filter out <think> tags before displaying in modal
+        content = this.filterThinkTags(content);
+        console.log('🖥️ Filtered content after removing <think> tags:', content);
         
         // Extract HTML from code blocks if present
         const extractedHtml = this.extractHtmlFromCodeBlocks(content);
@@ -1526,30 +1607,88 @@ class VikiChatCanvas extends BaseComponent {
         return 'text';
     }
 
-    // Simple override for content type detection
+    // Enhanced content type detection for markdown patterns
     getContentType(content) {
-        console.log('🎯 Simple content type check for:', content?.substring(0, 150) + '...');
+        console.log('🎯 Content type check for:', content?.substring(0, 150) + '...');
         
-        // Check if content has markdown headers (### HTML, ## CSS, etc.)
-        if (/#{1,6}\s+.+/m.test(content)) {
-            console.log('✅ Found markdown headers - treating as MARKDOWN');
+        // Filter out <think> tags before analyzing content type
+        content = this.filterThinkTags(content);
+        console.log('🎯 Content after filtering <think> tags:', content?.substring(0, 150) + '...');
+        
+        const trimmedContent = content.trim();
+        
+        // Check if it's pure HTML document (starts with HTML tags)
+        const startsWithHtml = /^<!DOCTYPE|^<html|^<head|^<body/i.test(trimmedContent);
+        
+        // Check for specific Markdown formatting (excluding HTML code blocks)
+        const hasHeaders = /#{1,6}\s/.test(content);
+        const hasBold = /\*\*[^*]+\*\*|__[^_]+__/.test(content);
+        const hasItalic = /\*[^*\n]+\*|_[^_\n]+_/.test(content);
+        const hasLists = /^\s*[-*+]\s|^\s*\d+\.\s/m.test(content);
+        const hasBlockquotes = /^\s*>\s/m.test(content);
+        const hasLinks = /\[[^\]]+\]\([^)]+\)/.test(content);
+        const hasNonHtmlCodeBlocks = /```(?!html)[a-z]*[\s\S]*?```/i.test(content);
+        
+        const hasOtherMarkdownFormatting = hasHeaders || hasBold || hasItalic || hasLists || hasBlockquotes || hasLinks || hasNonHtmlCodeBlocks;
+        
+        console.log('🔍 Markdown formatting check:');
+        console.log('  - Headers:', hasHeaders);
+        console.log('  - Bold:', hasBold);
+        console.log('  - Italic:', hasItalic);
+        console.log('  - Lists:', hasLists);
+        console.log('  - Blockquotes:', hasBlockquotes);
+        console.log('  - Links:', hasLinks);
+        console.log('  - Non-HTML code blocks:', hasNonHtmlCodeBlocks);
+        console.log('  - Has other Markdown formatting:', hasOtherMarkdownFormatting);
+        
+        // Check for HTML code blocks
+        const hasHtmlCodeBlocks = /```html[\s\S]*?```/i.test(content);
+        console.log('🔍 Has HTML code blocks:', hasHtmlCodeBlocks);
+        
+        // Logic:
+        // 1. Pure HTML document (starts with HTML tags and no other Markdown) → HTML
+        if (startsWithHtml && !hasOtherMarkdownFormatting) {
+            console.log('✅ Pure HTML document - treating as HTML');
+            return 'html';
+        }
+        
+        // 2. HTML code blocks with no other Markdown formatting → HTML
+        if (hasHtmlCodeBlocks && !hasOtherMarkdownFormatting) {
+            console.log('✅ HTML code blocks with no other Markdown formatting - treating as HTML');
+            return 'html';
+        }
+        
+        // 3. Has other Markdown formatting → Markdown
+        if (hasOtherMarkdownFormatting) {
+            console.log('✅ Has other Markdown formatting - treating as MARKDOWN');
             return 'markdown';
         }
         
-        // Check if content starts with HTML tags (not in code blocks)
-        if (/^<!DOCTYPE|^<html|^<head|^<body/im.test(content)) {
-            console.log('✅ Found standalone HTML - treating as HTML');
+        // 4. Check for standalone HTML without any code blocks
+        if (/<[a-z][^>]*>/i.test(content) && !hasHtmlCodeBlocks) {
+            console.log('✅ Contains HTML tags without code blocks - treating as HTML');
             return 'html';
         }
         
-        // Check if content has HTML code blocks
-        if (/```html[\s\S]*?```/i.test(content)) {
-            console.log('✅ Found HTML code blocks - treating as HTML');
-            return 'html';
-        }
-        
-        console.log('✅ No special formatting - treating as TEXT');
+        console.log('✅ Plain text - treating as TEXT');
         return 'text';
+    }
+
+    // Test the markdown detection with sample content
+    testMarkdownDetection() {
+        const testContent = `Here are the customer details for the account number "LEASE_AMORT_ADV_MON_DD1_03":
+
+- **Customer ID**: 103017
+- **First Name**: TEST
+- **Middle Name**: (Not provided)
+- **Last Name**: AUTOMATION
+- **Gender**: UNDEFINED
+
+Let me know if you need additional information!`;
+        
+        console.log('🧪 Testing markdown detection with sample content:');
+        console.log('Content type:', this.getContentType(testContent));
+        console.log('Preview:', this.createMarkdownPreview(testContent));
     }
 
     // Temporary test function to verify patterns
@@ -1583,6 +1722,57 @@ console.log('code block');
         console.log('🧪 Testing HTML:');
         console.log('Result:', this.detectHtml(testHtml));
         console.log('Strong HTML:', this.hasStrongHtmlPatterns(testHtml));
+   }
+
+    // Test function for think tag filtering
+    testThinkTagFiltering() {
+        console.log('🧪 Testing think tag filtering...');
+        
+        const testCases = [
+            {
+                name: 'Simple think tags',
+                input: 'Before <think>This should be hidden</think> After',
+                expected: 'Before  After'
+            },
+            {
+                name: 'Multiline think tags',
+                input: 'Start <think>\nMultiple\nlines\nof thinking\n</think> End',
+                expected: 'Start  End'
+            },
+            {
+                name: 'Multiple think tags',
+                input: 'First <think>hidden1</think> middle <think>hidden2</think> last',
+                expected: 'First  middle  last'
+            },
+            {
+                name: 'Case insensitive',
+                input: 'Test <THINK>Hidden</THINK> content',
+                expected: 'Test  content'
+            },
+            {
+                name: 'With spaces in tags',
+                input: 'Before <think >Hidden content</think > After',
+                expected: 'Before  After'
+            },
+            {
+                name: 'No think tags',
+                input: 'Regular content without think tags',
+                expected: 'Regular content without think tags'
+            }
+        ];
+        
+        testCases.forEach(testCase => {
+            const result = this.filterThinkTags(testCase.input);
+            const trimmedResult = result.trim();
+            const trimmedExpected = testCase.expected.trim();
+            const passed = trimmedResult === trimmedExpected;
+            
+            console.log(`${passed ? '✅' : '❌'} ${testCase.name}:`);
+            console.log(`  Input: "${testCase.input}"`);
+            console.log(`  Expected: "${trimmedExpected}"`);
+            console.log(`  Got: "${trimmedResult}"`);
+            console.log(`  Passed: ${passed}`);
+        });
     }
 
     // ...existing code...
