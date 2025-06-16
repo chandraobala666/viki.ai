@@ -440,8 +440,9 @@
     }
 }
 
-/* Markdown button styles */
-.view-markdown-btn {
+/* View button styles */
+.view-markdown-btn,
+.view-html-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -458,11 +459,13 @@
     text-decoration: none;
 }
 
-.view-markdown-btn:hover {
+.view-markdown-btn:hover,
+.view-html-btn:hover {
     background: #0056b3;
 }
 
-.view-markdown-btn:active {
+.view-markdown-btn:active,
+.view-html-btn:active {
     background: #004085;
 }
 
@@ -493,16 +496,19 @@
     overflow: hidden;
 }
 
-.markdown-modal-header {
+/* Shared modal header styles */
+.markdown-modal-header,
+.html-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.5rem;
+    padding: 1rem;
     border-bottom: 1px solid #e5e7eb;
-    background: #f9fafb;
+    background-color: #f9fafb;
 }
 
-.markdown-modal-header h3 {
+.markdown-modal-header h3,
+.html-modal-header h3 {
     margin: 0;
     color: #111827;
     font-size: 1.125rem;
@@ -515,26 +521,8 @@
     gap: 0.5rem;
 }
 
-.copy-markdown-btn {
-    background: #3b82f6;
-    border: none;
-    color: white;
-    cursor: pointer;
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.375rem 0.75rem;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.copy-markdown-btn:hover {
-    background: #2563eb;
-}
-
-.close-markdown-btn {
+.close-markdown-btn,
+.close-html-btn {
     background: none;
     border: none;
     color: #6b7280;
@@ -546,7 +534,8 @@
     transition: all 0.2s ease;
 }
 
-.close-markdown-btn:hover {
+.close-markdown-btn:hover,
+.close-html-btn:hover {
     background: #e5e7eb;
     color: #374151;
 }
@@ -589,39 +578,6 @@
     overflow: hidden;
 }
 
-.html-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f9fafb;
-}
-
-.html-modal-header h3 {
-    margin: 0;
-    color: #111827;
-    font-size: 1.125rem;
-    font-weight: 600;
-}
-
-.close-html-btn {
-    background: none;
-    border: none;
-    color: #6b7280;
-    cursor: pointer;
-    font-size: 1.5rem;
-    line-height: 1;
-    padding: 0.25rem;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-
-.close-html-btn:hover {
-    background: #e0f2fe;
-    color: #0369a1;
-}
-
 .html-modal-body {
     flex: 1;
     overflow: hidden;
@@ -633,6 +589,189 @@
     min-height: 400px;
 }
 
+/* Force light theme for HTML modals regardless of system preference */
+.html-modal-overlay viki-html {
+    --bg-color: #ffffff !important;
+    --text-color: #333333 !important;
+    --text-color-muted: #6a737d !important;
+    --border-color: #e1e4e8 !important;
+    --link-color: #0366d6 !important;
+    --code-bg-color: #f6f8fa !important;
+    --header-bg-color: #f6f8fa !important;
+    --alt-row-bg-color: #f9fafb !important;
+    background-color: #ffffff !important;
+}
+
+.html-modal-overlay viki-html .viki-html {
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    --bg-color: #ffffff !important;
+    --text-color: #333333 !important;
+    --text-color-muted: #6a737d !important;
+    --border-color: #e1e4e8 !important;
+    --link-color: #0366d6 !important;
+    --code-bg-color: #f6f8fa !important;
+    --header-bg-color: #f6f8fa !important;
+    --alt-row-bg-color: #f9fafb !important;
+}
+
+.html-modal-overlay viki-html .html-content {
+    background-color: #ffffff !important;
+    color: #333333 !important;
+}
+
+/* Override dark mode completely for HTML modals */
+.html-modal-overlay viki-html,
+.html-modal-overlay viki-html *,
+.html-modal-overlay .viki-html,
+.html-modal-overlay .viki-html *,
+.html-modal-overlay .html-content,
+.html-modal-overlay .html-content * {
+    background-color: #ffffff !important;
+    color: #333333 !important;
+}
+
+/* Ultra-specific override for viki-html component dark mode */
+div.html-modal-overlay viki-html.force-light-theme .viki-html {
+    --bg-color: #ffffff !important;
+    --text-color: #c9d1d9 !important;
+    --text-color: #333333 !important;
+    --text-color-muted: #6a737d !important;
+    --border-color: #e1e4e8 !important;
+    --link-color: #0366d6 !important;
+    --code-bg-color: #f6f8fa !important;
+    --header-bg-color: #f6f8fa !important;
+    --alt-row-bg-color: #f9fafb !important;
+    --button-bg-color: #238636 !important;
+    --button-text-color: #ffffff !important;
+    --button-hover-bg-color: #2ea043 !important;
+    --button-active-bg-color: #1a7f37 !important;
+    background-color: #ffffff !important;
+    color: #333333 !important;
+}
+
+/* Force override dark mode media query with higher specificity */
+@media (prefers-color-scheme: dark) {
+    .html-modal-overlay .viki-html,
+    .html-modal-overlay viki-html .viki-html {
+        --bg-color: #ffffff !important;
+        --text-color: #333333 !important;
+        --text-color-muted: #6a737d !important;
+        --border-color: #e1e4e8 !important;
+        --link-color: #0366d6 !important;
+        --code-bg-color: #f6f8fa !important;
+        --header-bg-color: #f6f8fa !important;
+        --alt-row-bg-color: #f9fafb !important;
+        --button-bg-color: #238636 !important;
+        --button-text-color: #ffffff !important;
+        --button-hover-bg-color: #2ea043 !important;
+        --button-active-bg-color: #1a7f37 !important;
+        background-color: #ffffff !important;
+        color: #333333 !important;
+    }
+    
+    .html-modal-overlay .html-content {
+        background-color: #ffffff !important;
+        color: #333333 !important;
+    }
+    
+    .html-modal-overlay .html-content * {
+        background-color: transparent !important;
+        color: inherit !important;
+    }
+}
+
+/* Restore proper styling for specific elements */
+.html-modal-overlay .html-content code {
+    background-color: #f6f8fa !important;
+    color: #333333 !important;
+}
+
+.html-modal-overlay .html-content pre {
+    background-color: #f6f8fa !important;
+    color: #333333 !important;
+}
+
+.html-modal-overlay .html-content a {
+    color: #0366d6 !important;
+}
+
+/* Hide DOMPurify security indicator in modals */
+.html-modal-overlay .html-content::before {
+    display: none !important;
+}
+
+/* Ensure HTML modal header matches Markdown modal exactly */
+.html-modal-overlay .html-modal {
+    background: white !important;
+}
+
+.html-modal-overlay .html-modal-header {
+    background-color: #f9fafb !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+.html-modal-overlay .html-modal-header h3 {
+    color: #111827 !important;
+    font-size: 1.125rem !important;
+    font-weight: 600 !important;
+}
+
+.html-modal-overlay .close-html-btn {
+    color: #6b7280 !important;
+    background: none !important;
+}
+
+.html-modal-overlay .close-html-btn:hover {
+    color: #374151 !important;
+    background: #e5e7eb !important;
+}
+
+/* Force light theme class - highest priority override */
+.force-light-theme,
+.force-light-theme *,
+.force-light-theme .viki-html,
+.force-light-theme .html-content {
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    --bg-color: #ffffff !important;
+    --text-color: #333333 !important;
+    --text-color-muted: #6a737d !important;
+    --border-color: #e1e4e8 !important;
+    --link-color: #0366d6 !important;
+    --code-bg-color: #f6f8fa !important;
+    --header-bg-color: #f6f8fa !important;
+    --alt-row-bg-color: #f9fafb !important;
+}
+
+/* Hide DOMPurify security header in force-light-theme */
+.force-light-theme .html-content::before {
+    display: none !important;
+}
+
+/* Even override dark mode media query with force-light-theme */
+@media (prefers-color-scheme: dark) {
+    .force-light-theme,
+    .force-light-theme *,
+    .force-light-theme .viki-html,
+    .force-light-theme .html-content {
+        background-color: #ffffff !important;
+        color: #333333 !important;
+        --bg-color: #ffffff !important;
+        --text-color: #333333 !important;
+        --text-color-muted: #6a737d !important;
+        --border-color: #e1e4e8 !important;
+        --link-color: #0366d6 !important;
+        --code-bg-color: #f6f8fa !important;
+        --header-bg-color: #f6f8fa !important;
+        --alt-row-bg-color: #f9fafb !important;
+    }
+    
+    .force-light-theme .html-content::before {
+        display: none !important;
+    }
+}
+
 /* Responsive modal */
 @media (max-width: 768px) {
     .markdown-modal {
@@ -641,24 +780,18 @@
         margin: 1rem;
     }
     
-    .markdown-modal-header {
-        padding: 0.75rem 1rem;
-    }
-    
-    .markdown-modal-header h3 {
-        font-size: 1rem;
-    }
-    
     .html-modal {
         max-width: 95vw;
         max-height: 90vh;
         margin: 1rem;
     }
     
+    .markdown-modal-header,
     .html-modal-header {
         padding: 0.75rem 1rem;
     }
     
+    .markdown-modal-header h3,
     .html-modal-header h3 {
         font-size: 1rem;
     }

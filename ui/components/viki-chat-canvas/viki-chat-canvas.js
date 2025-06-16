@@ -409,8 +409,15 @@ class VikiChatCanvas extends BaseComponent {
         const avatarAlt = type === 'user' ? 'User' : 'Bot';
 
         // Check content type (for bot messages only)
-        const hasMarkdown = type === 'bot' && this.detectMarkdown(content);
-        const hasHtml = type === 'bot' && this.detectHtml(content);
+        if (type === 'bot') {
+            const contentType = this.getContentType(content);
+            console.log('🔍 Content type detected:', contentType, 'for content:', content.substring(0, 100) + '...');
+            var hasHtml = contentType === 'html';
+            var hasMarkdown = contentType === 'markdown';
+        } else {
+            var hasHtml = false;
+            var hasMarkdown = false;
+        }
         
         let actionButton = '';
         let displayContent = '';
@@ -436,6 +443,12 @@ class VikiChatCanvas extends BaseComponent {
         } else {
             // Display regular escaped text for non-markdown/non-HTML content
             displayContent = `<p>${this.escapeHtml(content)}</p>`;
+            // Add debug info to see what's happening
+            if (type === 'bot') {
+                displayContent += `<small style="color: #666; font-size: 0.8em; display: block; margin-top: 5px;">
+                    Debug: HTML=${hasHtml}, Markdown=${hasMarkdown}
+                </small>`;
+            }
         }
 
         messageDiv.innerHTML = `
@@ -645,8 +658,14 @@ class VikiChatCanvas extends BaseComponent {
         const avatarAlt = type === 'user' ? 'User' : 'Bot';
 
         // Check content type (for bot messages only)
-        const hasMarkdown = type === 'bot' && this.detectMarkdown(content);
-        const hasHtml = type === 'bot' && this.detectHtml(content);
+        if (type === 'bot') {
+            const contentType = this.getContentType(content);
+            var hasHtml = contentType === 'html';
+            var hasMarkdown = contentType === 'markdown';
+        } else {
+            var hasHtml = false;
+            var hasMarkdown = false;
+        }
         
         let actionButton = '';
         let displayContent = '';
@@ -672,6 +691,12 @@ class VikiChatCanvas extends BaseComponent {
         } else {
             // Display regular escaped text for non-markdown/non-HTML content
             displayContent = `<p>${this.escapeHtml(content)}</p>`;
+            // Add debug info to see what's happening for new messages too
+            if (type === 'bot') {
+                displayContent += `<small style="color: #666; font-size: 0.8em; display: block; margin-top: 5px;">
+                    Debug: HTML=${hasHtml}, Markdown=${hasMarkdown}
+                </small>`;
+            }
         }
 
         messageDiv.innerHTML = `
@@ -823,60 +848,64 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     detectMarkdown(content) {
-        console.log('🔍 Detecting markdown in content:', content?.substring(0, 100) + '...');
+        console.log('🔍 Detecting markdown in content:', content?.substring(0, 200) + '...');
         
-        // Simple markdown detection patterns
-        const markdownPatterns = [
-            /#{1,6}\s+.+/,                    // Headers (# ## ### etc.)
+        // Strong markdown indicators (if any of these are found, it's definitely markdown)
+        const strongMarkdownPatterns = [
+            /#{1,6}\s+.+/,                   // Headers
+            /```[\s\S]*?```/,                // Code blocks (non-HTML)
+            /^\s*[-*+]\s+.+/m,               // Unordered lists (with content)
+            /^\s*\d+\.\s+.+/m,               // Ordered lists (with content)
+            /^\s*\|.+\|/m,                   // Tables
+            /^\s*>\s+.+/m,                   // Blockquotes (with content)
+            /^\s*[-*_]{3,}\s*$/m,            // Horizontal rules
+            /\[[^\]\n]+\]\([^)\n]+\)/        // Links
+        ];
+
+        // Check for strong markdown patterns first
+        for (const pattern of strongMarkdownPatterns) {
+            if (pattern.test(content)) {
+                console.log('✅ Markdown detected (strong pattern):', pattern.source);
+                console.log('✅ Pattern match:', content.match(pattern)?.[0]);
+                return true;
+            }
+        }
+
+        // Weaker markdown patterns
+        const weakMarkdownPatterns = [
             /\*\*[^*\n]+\*\*/,               // Bold text
             /\*[^*\n]+\*/,                   // Italic text
             /__[^_\n]+__/,                   // Bold with underscores
             /_[^_\n]+_/,                     // Italic with underscores
             /`[^`\n]+`/,                     // Inline code
-            /```[\s\S]*?```/,                // Code blocks
-            /^\s*[-*+]\s+/m,                 // Unordered lists
-            /^\s*\d+\.\s+/m,                 // Ordered lists
-            /\[[^\]\n]+\]\([^)\n]+\)/,       // Links
             /!\[[^\]\n]*\]\([^)\n]+\)/,      // Images
-            /^\s*>\s+/m,                     // Blockquotes
-            /^\s*[-*_]{3,}\s*$/m,            // Horizontal rules
-            /^\s*\|.+\|/m,                   // Tables
             /\n\s*\n/,                       // Multiple line breaks (common in markdown)
             /~~[^~\n]+~~/                    // Strikethrough
         ];
 
-        // Check if content contains multiple markdown patterns or significant formatting
+        // Check if content contains multiple weak markdown patterns
         let patternCount = 0;
         let matchedPatterns = [];
         
-        for (const pattern of markdownPatterns) {
+        for (const pattern of weakMarkdownPatterns) {
             if (pattern.test(content)) {
                 patternCount++;
                 matchedPatterns.push(pattern.source);
-                // If we find headers, code blocks, lists, or tables, it's likely markdown
-                if (pattern.source.includes('#{1,6}') || 
-                    pattern.source.includes('```') || 
-                    pattern.source.includes('[-*+]') ||
-                    pattern.source.includes('\\d+\\.') ||
-                    pattern.source.includes('\\|.+\\|')) {
-                    console.log('✅ Markdown detected (strong pattern):', pattern.source);
-                    return true;
-                }
             }
         }
 
-        // If we have multiple markdown patterns, consider it markdown
+        // Lower threshold for weak patterns - markdown is quite common
         const isMarkdown = patternCount >= 2;
-        console.log(`📊 Markdown detection: ${patternCount} patterns matched:`, matchedPatterns);
+        console.log(`📊 Markdown detection: ${patternCount} weak patterns matched:`, matchedPatterns);
         console.log(`🔍 Is markdown: ${isMarkdown}`);
         return isMarkdown;
     }
 
     detectHtml(content) {
-        console.log('🔍 Detecting HTML in content:', content?.substring(0, 100) + '...');
+        console.log('🔍 Detecting HTML in content:', content?.substring(0, 200) + '...');
         
-        // HTML detection patterns
-        const htmlPatterns = [
+        // Strong HTML indicators that should always trigger HTML view
+        const strongHtmlPatterns = [
             /```html[\s\S]*?```/i,                          // HTML code blocks
             /<!DOCTYPE\s+html>/i,                           // DOCTYPE declaration
             /<html[\s\S]*?>/i,                              // HTML tag
@@ -884,8 +913,34 @@ class VikiChatCanvas extends BaseComponent {
             /<body[\s\S]*?>/i,                              // Body tag
             /<style[\s\S]*?>[\s\S]*?<\/style>/i,           // Style tags with content
             /<script[\s\S]*?>[\s\S]*?<\/script>/i,         // Script tags with content
+        ];
+
+        // Check for strong HTML indicators first
+        let hasStrongHtmlPattern = false;
+        let matchedPatterns = [];
+        
+        for (const pattern of strongHtmlPatterns) {
+            if (pattern.test(content)) {
+                hasStrongHtmlPattern = true;
+                matchedPatterns.push(pattern.source);
+                console.log('✅ HTML detected (strong pattern):', pattern.source);
+                console.log('✅ Pattern match:', content.match(pattern)?.[0]?.substring(0, 100) + '...');
+            }
+        }
+
+        // If we have strong HTML patterns, it's definitely HTML
+        if (hasStrongHtmlPattern) {
+            console.log(`📊 HTML detection: Strong patterns matched:`, matchedPatterns);
+            console.log(`🔍 Is HTML: true (strong patterns)`);
+            return true;
+        }
+
+        // Secondary HTML patterns (require multiple matches)
+        const secondaryHtmlPatterns = [
             /<div[\s\S]*?>[\s\S]*?<\/div>/i,               // Div elements
-            /<[a-zA-Z][a-zA-Z0-9]*[^<>]*>[\s\S]*?<\/[a-zA-Z][a-zA-Z0-9]*>/g, // General HTML tags
+            /<p[\s\S]*?>[\s\S]*?<\/p>/i,                   // Paragraph elements
+            /<span[\s\S]*?>[\s\S]*?<\/span>/i,             // Span elements
+            /<h[1-6][\s\S]*?>[\s\S]*?<\/h[1-6]>/i,         // Header elements
             /@keyframes\s+[\w-]+\s*\{/,                     // CSS keyframes
             /\.\w+[\s]*\{[\s\S]*?\}/,                       // CSS classes
             /#\w+[\s]*\{[\s\S]*?\}/,                        // CSS IDs
@@ -894,48 +949,58 @@ class VikiChatCanvas extends BaseComponent {
             /background:\s*linear-gradient/,                // CSS gradients
         ];
 
-        // Check for strong HTML indicators
-        let patternCount = 0;
-        let matchedPatterns = [];
-        let hasStrongHtmlPattern = false;
-        
-        for (const pattern of htmlPatterns) {
+        // Check secondary patterns (need multiple matches)
+        let secondaryPatternCount = 0;
+        let secondaryMatchedPatterns = [];
+        for (const pattern of secondaryHtmlPatterns) {
             if (pattern.test(content)) {
-                patternCount++;
-                matchedPatterns.push(pattern.source);
-                
-                // Strong HTML indicators
-                if (pattern.source.includes('```html') || 
-                    pattern.source.includes('DOCTYPE') ||
-                    pattern.source.includes('<html') ||
-                    pattern.source.includes('<style') ||
-                    pattern.source.includes('<script') ||
-                    pattern.source.includes('keyframes')) {
-                    hasStrongHtmlPattern = true;
-                    console.log('✅ HTML detected (strong pattern):', pattern.source);
-                }
+                secondaryPatternCount++;
+                secondaryMatchedPatterns.push(pattern.source);
             }
         }
 
-        // Consider it HTML if we have strong patterns or multiple HTML patterns
-        const isHtml = hasStrongHtmlPattern || patternCount >= 3;
-        console.log(`📊 HTML detection: ${patternCount} patterns matched:`, matchedPatterns);
-        console.log(`🔍 Is HTML: ${isHtml}`);
+        // Consider it HTML only if we have multiple secondary patterns
+        const isHtml = secondaryPatternCount >= 3;
+        console.log(`📊 HTML detection: ${secondaryPatternCount} secondary patterns matched:`, secondaryMatchedPatterns);
+        console.log(`🔍 Is HTML: ${isHtml} (secondary patterns)`);
         return isHtml;
     }
 
     extractHtmlFromCodeBlocks(content) {
-        // Extract HTML content from code blocks
+        if (!content) return '';
+        
+        // First, try to extract HTML from code blocks
         const htmlBlockRegex = /```html\s*([\s\S]*?)\s*```/gi;
         const matches = content.match(htmlBlockRegex);
         
         if (matches && matches.length > 0) {
             // Extract the HTML content without the code block markers
-            return matches.map(match => {
-                return match.replace(/```html\s*/gi, '').replace(/\s*```/g, '');
+            const extractedHtml = matches.map(match => {
+                return match.replace(/```html\s*/gi, '').replace(/\s*```/g, '').trim();
             }).join('\n\n');
+            
+            console.log('✅ Extracted HTML from code blocks:', extractedHtml.substring(0, 200) + '...');
+            return extractedHtml;
         }
         
+        // If no HTML code blocks found, check if the entire content is wrapped in code block markers
+        const simpleBlockRegex = /^```html\s*([\s\S]*?)\s*```$/gi;
+        const simpleMatch = content.match(simpleBlockRegex);
+        
+        if (simpleMatch) {
+            const cleanedHtml = content.replace(/^```html\s*/gi, '').replace(/\s*```$/g, '').trim();
+            console.log('✅ Cleaned HTML from simple wrapper:', cleanedHtml.substring(0, 200) + '...');
+            return cleanedHtml;
+        }
+        
+        // If content starts and ends with code markers but no language specified
+        if (content.trim().startsWith('```') && content.trim().endsWith('```')) {
+            const cleaned = content.replace(/^```[a-zA-Z]*\s*/gi, '').replace(/\s*```$/g, '').trim();
+            console.log('✅ Cleaned HTML from generic code block:', cleaned.substring(0, 200) + '...');
+            return cleaned;
+        }
+        
+        console.log('ℹ️ No code block markers found, returning content as-is');
         return content;
     }
 
@@ -1043,51 +1108,254 @@ class VikiChatCanvas extends BaseComponent {
     }
 
     showHtmlModal(messageId, content) {
-        console.log('�️ Opening HTML modal for message:', messageId);
+        console.log('🖥️ Opening HTML modal for message:', messageId);
+        console.log('🖥️ Raw content:', content);
+        
+        // Extract HTML from code blocks if present
+        const extractedHtml = this.extractHtmlFromCodeBlocks(content);
+        console.log('🖥️ Extracted HTML:', extractedHtml);
         
         // Create modal HTML
         const modal = document.createElement('div');
-        modal.className = 'html-modal-overlay';
+        modal.className = 'html-modal-overlay force-light-theme';
         modal.innerHTML = `
-            <div class="html-modal">
+            <div class="html-modal force-light-theme">
                 <div class="html-modal-header">
                     <h3>HTML View</h3>
                     <div class="modal-actions">
-                        <button class="copy-html-btn">Copy</button>
                         <button class="close-html-btn">×</button>
                     </div>
                 </div>
                 <div class="html-modal-body">
-                    <viki-html allow-styles allow-scripts></viki-html>
+                    <viki-html allow-styles allow-scripts class="force-light-theme"></viki-html>
                 </div>
             </div>
         `;
 
         // Add to body
         document.body.appendChild(modal);
+        console.log('🖥️ Modal added to body');
         
-        // Force apply styles directly via JavaScript
+        // Add a style tag to force override dark mode
+        const styleOverride = document.createElement('style');
+        styleOverride.textContent = `
+            .html-modal-overlay viki-html .viki-html {
+                background-color: #ffffff !important;
+                color: #333333 !important;
+            }
+            .html-modal-overlay viki-html .html-content {
+                background-color: #ffffff !important;
+                color: #333333 !important;
+            }
+            .html-modal-overlay viki-html .html-content::before {
+                display: none !important;
+            }
+            @media (prefers-color-scheme: dark) {
+                .html-modal-overlay viki-html .viki-html {
+                    --bg-color: #ffffff !important;
+                    --text-color: #333333 !important;
+                    --text-color-muted: #6a737d !important;
+                    --border-color: #e1e4e8 !important;
+                    --link-color: #0366d6 !important;
+                    --code-bg-color: #f6f8fa !important;
+                    --header-bg-color: #f6f8fa !important;
+                    --alt-row-bg-color: #f9fafb !important;
+                    background-color: #ffffff !important;
+                    color: #333333 !important;
+                }
+                .html-modal-overlay viki-html .html-content {
+                    background-color: #ffffff !important;
+                    color: #333333 !important;
+                }
+                .html-modal-overlay viki-html .html-content::before {
+                    display: none !important;
+                }
+            }
+        `;
+        document.head.appendChild(styleOverride);
+        
+        // Store style element for cleanup
+        modal.setAttribute('data-style-override', 'true');
+        modal._styleOverride = styleOverride;
+        
+        // Force apply styles directly via JavaScript with enhanced visibility
         modal.style.position = 'fixed';
         modal.style.top = '0';
         modal.style.left = '0';
         modal.style.right = '0';
         modal.style.bottom = '0';
-        modal.style.background = 'rgba(0, 0, 0, 0.5)';
+        modal.style.background = 'rgba(0, 0, 0, 0.8)';
         modal.style.display = 'flex';
         modal.style.alignItems = 'center';
         modal.style.justifyContent = 'center';
-        modal.style.zIndex = '9999';
+        modal.style.zIndex = '99999';
         modal.style.backdropFilter = 'blur(2px)';
+        
+        // Style the inner modal for better visibility
+        const innerModal = modal.querySelector('.html-modal');
+        if (innerModal) {
+            innerModal.style.background = 'white';
+            innerModal.style.borderRadius = '12px';
+            innerModal.style.maxWidth = '90vw';
+            innerModal.style.maxHeight = '90vh';
+            innerModal.style.width = '100%';
+            innerModal.style.minHeight = '500px';
+            innerModal.style.display = 'flex';
+            innerModal.style.flexDirection = 'column';
+            innerModal.style.overflow = 'hidden';
+            innerModal.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.3)';
+        }
+        
+        // Force header styling to match Markdown modal
+        const modalHeader = modal.querySelector('.html-modal-header');
+        if (modalHeader) {
+            modalHeader.style.backgroundColor = '#f9fafb';
+            modalHeader.style.borderBottom = '1px solid #e5e7eb';
+            modalHeader.style.padding = '1rem';
+            modalHeader.style.display = 'flex';
+            modalHeader.style.alignItems = 'center';
+            modalHeader.style.justifyContent = 'space-between';
+        }
+        
+        const modalTitle = modal.querySelector('.html-modal-header h3');
+        if (modalTitle) {
+            modalTitle.style.margin = '0';
+            modalTitle.style.fontSize = '1.125rem';
+            modalTitle.style.fontWeight = '600';
+            modalTitle.style.color = '#111827';
+        }
+        
+        const htmlCloseBtn = modal.querySelector('.close-html-btn');
+        if (htmlCloseBtn) {
+            htmlCloseBtn.style.background = 'none';
+            htmlCloseBtn.style.border = 'none';
+            htmlCloseBtn.style.fontSize = '1.5rem';
+            htmlCloseBtn.style.color = '#6b7280';
+            htmlCloseBtn.style.cursor = 'pointer';
+            htmlCloseBtn.style.padding = '0.25rem';
+            htmlCloseBtn.style.borderRadius = '4px';
+            htmlCloseBtn.style.transition = 'all 0.2s ease';
+        }
+        
+        console.log('🖥️ Enhanced modal styles applied');
 
         // Extract and set the HTML content
         setTimeout(() => {
+            console.log('🖥️ Setting HTML content on viki-html component...');
             const htmlComponent = modal.querySelector('viki-html');
             if (htmlComponent) {
+                console.log('🖥️ VikiHtml component found:', htmlComponent);
                 // Extract HTML from code blocks if present
                 const extractedHtml = this.extractHtmlFromCodeBlocks(content);
+                console.log('🖥️ Setting extracted HTML content...');
                 htmlComponent.setAttribute('html-content', extractedHtml);
+                console.log('🖥️ HTML content attribute set');
+                
+                // Force a style update on the viki-html component
+                htmlComponent.style.display = 'block';
+                htmlComponent.style.width = '100%';
+                htmlComponent.style.height = '100%';
+                htmlComponent.style.overflow = 'auto';
+                htmlComponent.style.backgroundColor = '#ffffff';
+                
+                // Force CSS variables to override dark mode
+                htmlComponent.style.setProperty('--bg-color', '#ffffff', 'important');
+                htmlComponent.style.setProperty('--text-color', '#333333', 'important');
+                htmlComponent.style.setProperty('--text-color-muted', '#6a737d', 'important');
+                htmlComponent.style.setProperty('--border-color', '#e1e4e8', 'important');
+                htmlComponent.style.setProperty('--link-color', '#0366d6', 'important');
+                htmlComponent.style.setProperty('--code-bg-color', '#f6f8fa', 'important');
+                htmlComponent.style.setProperty('--header-bg-color', '#f6f8fa', 'important');
+                htmlComponent.style.setProperty('--alt-row-bg-color', '#f9fafb', 'important');
+                
+                // Force white background on nested elements
+                setTimeout(() => {
+                    const vikiHtmlDiv = htmlComponent.querySelector('.viki-html');
+                    if (vikiHtmlDiv) {
+                        // Force all dark theme variables to light theme
+                        const lightThemeVars = {
+                            '--bg-color': '#ffffff',
+                            '--text-color': '#333333',
+                            '--text-color-muted': '#6a737d',
+                            '--border-color': '#e1e4e8',
+                            '--link-color': '#0366d6',
+                            '--code-bg-color': '#f6f8fa',
+                            '--header-bg-color': '#f6f8fa',
+                            '--alt-row-bg-color': '#f9fafb',
+                            '--button-bg-color': '#238636',
+                            '--button-text-color': '#ffffff',
+                            '--button-hover-bg-color': '#2ea043',
+                            '--button-active-bg-color': '#1a7f37'
+                        };
+                        
+                        // Apply to viki-html element
+                        Object.entries(lightThemeVars).forEach(([prop, value]) => {
+                            vikiHtmlDiv.style.setProperty(prop, value, 'important');
+                        });
+                        vikiHtmlDiv.style.backgroundColor = '#ffffff';
+                        vikiHtmlDiv.style.color = '#333333';
+                        
+                        // Apply to html component as well
+                        Object.entries(lightThemeVars).forEach(([prop, value]) => {
+                            htmlComponent.style.setProperty(prop, value, 'important');
+                        });
+                    }
+                    
+                    const htmlContentDiv = htmlComponent.querySelector('.html-content');
+                    if (htmlContentDiv) {
+                        htmlContentDiv.style.backgroundColor = '#ffffff';
+                        htmlContentDiv.style.color = '#333333';
+                        
+                        // Create ultra-specific style override for security indicator
+                        const securityStyle = document.createElement('style');
+                        securityStyle.textContent = `
+                            div.html-modal-overlay viki-html.force-light-theme .html-content::before,
+                            .html-modal-overlay .html-content::before,
+                            .force-light-theme .html-content::before {
+                                display: none !important;
+                                content: none !important;
+                                visibility: hidden !important;
+                            }
+                        `;
+                        securityStyle.setAttribute('data-hide-security-ultra', 'true');
+                        document.head.appendChild(securityStyle);
+                        
+                        // Store for cleanup
+                        modal._securityStyle = securityStyle;
+                        
+                        // Add mutation observer to catch any dynamic style changes
+                        const observer = new MutationObserver((mutations) => {
+                            mutations.forEach((mutation) => {
+                                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                                    const target = mutation.target;
+                                    if (target.classList.contains('viki-html') || target.classList.contains('html-content')) {
+                                        // Force light theme if dark theme is detected
+                                        target.style.backgroundColor = '#ffffff';
+                                        target.style.color = '#333333';
+                                    }
+                                }
+                            });
+                        });
+                        
+                        observer.observe(vikiHtmlDiv, { 
+                            attributes: true, 
+                            attributeFilter: ['style', 'class'],
+                            subtree: true 
+                        });
+                        observer.observe(htmlContentDiv, { 
+                            attributes: true, 
+                            attributeFilter: ['style', 'class'],
+                            subtree: true 
+                        });
+                        
+                        // Store observer for cleanup
+                        modal._styleObserver = observer;
+                    }
+                }, 50);
+            } else {
+                console.error('❌ VikiHtml component not found in modal');
             }
-        }, 0);
+        }, 100);
         
         // Store content for potential use
         modal.setAttribute('data-html-content', content);
@@ -1095,17 +1363,43 @@ class VikiChatCanvas extends BaseComponent {
         // Add event listeners
         const closeBtn = modal.querySelector('.close-html-btn');
         closeBtn.addEventListener('click', () => {
+            // Clean up style override
+            if (modal._styleOverride) {
+                modal._styleOverride.remove();
+            }
+            if (modal._securityStyle) {
+                modal._securityStyle.remove();
+            }
+            if (modal._styleObserver) {
+                modal._styleObserver.disconnect();
+            }
             modal.remove();
         });
-
-        const copyBtn = modal.querySelector('.copy-html-btn');
-        copyBtn.addEventListener('click', () => {
-            this.copyHtmlContent(messageId, copyBtn);
+        
+        // Add hover effects for close button
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.backgroundColor = '#e5e7eb';
+            closeBtn.style.color = '#374151';
+        });
+        
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.backgroundColor = 'transparent';
+            closeBtn.style.color = '#6b7280';
         });
 
         // Add click outside to close
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
+                // Clean up style override
+                if (modal._styleOverride) {
+                    modal._styleOverride.remove();
+                }
+                if (modal._securityStyle) {
+                    modal._securityStyle.remove();
+                }
+                if (modal._styleObserver) {
+                    modal._styleObserver.disconnect();
+                }
                 modal.remove();
             }
         });
@@ -1113,6 +1407,16 @@ class VikiChatCanvas extends BaseComponent {
         // Add escape key to close
         const escapeHandler = (e) => {
             if (e.key === 'Escape') {
+                // Clean up style override
+                if (modal._styleOverride) {
+                    modal._styleOverride.remove();
+                }
+                if (modal._securityStyle) {
+                    modal._securityStyle.remove();
+                }
+                if (modal._styleObserver) {
+                    modal._styleObserver.disconnect();
+                }
                 modal.remove();
                 document.removeEventListener('keydown', escapeHandler);
             }
@@ -1122,113 +1426,166 @@ class VikiChatCanvas extends BaseComponent {
         console.log('🖥️ HTML modal opened with ID:', messageId);
     }
 
-    copyMarkdownContent(messageId, button) {
-        const modal = button.closest('.markdown-modal-overlay');
-        const content = modal.getAttribute('data-markdown-content');
-        
-        if (navigator.clipboard && content) {
-            navigator.clipboard.writeText(content).then(() => {
-                // Show feedback
-                const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
-                button.style.background = '#10b981';
-                
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.background = '';
-                }, 2000);
-            }).catch(err => {
-                console.error('Failed to copy content: ', err);
-                // Fallback for older browsers
-                this.fallbackCopyTextToClipboard(content, button);
-            });
-        } else {
-            this.fallbackCopyTextToClipboard(content, button);
-        }
-    }
+    hasStrongHtmlPatterns(content) {
+        // Only detect standalone HTML, not HTML within markdown code blocks
+        const standaloneHtmlPatterns = [
+            /<!DOCTYPE\s+html>/i,                           // DOCTYPE declaration
+            /<html[\s\S]*?>/i,                              // HTML tag
+            /<head[\s\S]*?>/i,                              // Head tag
+            /<body[\s\S]*?>/i,                              // Body tag
+            /<style[\s\S]*?>[\s\S]*?<\/style>/i,           // Style tags with content
+            /<script[\s\S]*?>[\s\S]*?<\/script>/i,         // Script tags with content
+        ];
 
-    fallbackCopyTextToClipboard(text, button) {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.top = '0';
-        textArea.style.left = '0';
-        textArea.style.position = 'fixed';
+        // Check if content has markdown structure indicators
+        const hasMarkdownStructure = /#{1,6}\s+.+/.test(content) || // Headers
+                                   /^\s*[-*+]\s+.+/m.test(content) || // Lists
+                                   /^\s*\d+\.\s+.+/m.test(content) || // Numbered lists
+                                   /^\s*\|.+\|/m.test(content); // Tables
 
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-
-        try {
-            const successful = document.execCommand('copy');
-            if (successful) {
-                const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
-                button.style.background = '#10b981';
-                
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.background = '';
-                }, 2000);
+        // If content has markdown structure, only consider HTML code blocks as HTML
+        if (hasMarkdownStructure) {
+            const htmlCodeBlockPattern = /```html[\s\S]*?```/i;
+            if (htmlCodeBlockPattern.test(content)) {
+                console.log('✅ HTML code block found within markdown structure');
+                return true;
             }
-        } catch (err) {
-            console.error('Fallback: Oops, unable to copy', err);
+            console.log('🔍 Markdown structure detected, ignoring standalone HTML patterns');
+            return false;
         }
 
-        document.body.removeChild(textArea);
-    }
-
-    copyHtmlContent(messageId, button) {
-        const modal = button.closest('.html-modal-overlay');
-        const content = modal.getAttribute('data-html-content');
+        // Otherwise, check for standalone HTML patterns
+        for (const pattern of standaloneHtmlPatterns) {
+            if (pattern.test(content)) {
+                console.log('✅ Strong standalone HTML pattern found:', pattern.source);
+                return true;
+            }
+        }
         
-        if (navigator.clipboard && content) {
-            navigator.clipboard.writeText(content).then(() => {
-                // Show feedback
-                const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
-                button.style.background = '#10b981';
-                
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.background = '';
-                }, 2000);
-            }).catch(err => {
-                console.error('Failed to copy HTML content:', err);
-                
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = content;
-                document.body.appendChild(textArea);
-                textArea.select();
-                
-                try {
-                    document.execCommand('copy');
-                    const originalText = button.textContent;
-                    button.textContent = '✅ Copied!';
-                    button.style.background = '#10b981';
-                    
-                    setTimeout(() => {
-                        button.textContent = originalText;
-                        button.style.background = '';
-                    }, 2000);
-                } catch (fallbackErr) {
-                    console.error('Fallback copy failed:', fallbackErr);
-                    button.textContent = '❌ Copy failed';
-                    setTimeout(() => {
-                        button.textContent = 'Copy';
-                    }, 2000);
-                }
-                
-                document.body.removeChild(textArea);
-            });
-        } else {
-            console.error('Clipboard API not available or no content found');
-            button.textContent = '❌ Copy failed';
-            setTimeout(() => {
-                button.textContent = 'Copy';
-            }, 2000);
+        // Also check for HTML code blocks in non-markdown content
+        if (/```html[\s\S]*?```/i.test(content)) {
+            console.log('✅ HTML code block found in non-markdown content');
+            return true;
         }
+        
+        return false;
     }
+
+    determineContentType(content) {
+        // Check for markdown structure first
+        const hasMarkdownHeaders = /#{1,6}\s+.+/.test(content);
+        const hasMarkdownLists = /^\s*[-*+]\s+.+/m.test(content) || /^\s*\d+\.\s+.+/m.test(content);
+        const hasMarkdownTables = /^\s*\|.+\|/m.test(content);
+        const hasMarkdownQuotes = /^\s*>\s+.+/m.test(content);
+        const hasMarkdownCodeBlocks = /```[\s\S]*?```/.test(content);
+        
+        const markdownStructureCount = [hasMarkdownHeaders, hasMarkdownLists, hasMarkdownTables, hasMarkdownQuotes, hasMarkdownCodeBlocks].filter(Boolean).length;
+        
+        // Check for HTML patterns
+        const hasHtmlCodeBlocks = /```html[\s\S]*?```/i.test(content);
+        const hasStandaloneHtml = /<!DOCTYPE\s+html>|<html[\s\S]*?>|<head[\s\S]*?>|<body[\s\S]*?>/i.test(content);
+        const hasStyleScriptTags = /<style[\s\S]*?>[\s\S]*?<\/style>|<script[\s\S]*?>[\s\S]*?<\/script>/i.test(content);
+        
+        console.log('� Content analysis:', {
+            markdownStructureCount,
+            hasHtmlCodeBlocks,
+            hasStandaloneHtml,
+            hasStyleScriptTags,
+            hasMarkdownHeaders,
+            hasMarkdownLists
+        });
+        
+        // Decision logic:
+        // 1. If content has significant markdown structure AND HTML is in code blocks -> Markdown
+        // 2. If content has standalone HTML elements (DOCTYPE, html, head, body) -> HTML
+        // 3. If content has HTML code blocks but no markdown structure -> HTML
+        // 4. If content has markdown structure but no HTML -> Markdown
+        // 5. Otherwise -> Plain text
+        
+        if (markdownStructureCount >= 2 && hasHtmlCodeBlocks && !hasStandaloneHtml) {
+            console.log('📝 Determined: Markdown (HTML in code blocks)');
+            return 'markdown';
+        }
+        
+        if (hasStandaloneHtml || hasStyleScriptTags) {
+            console.log('🌐 Determined: HTML (standalone HTML elements)');
+            return 'html';
+        }
+        
+        if (hasHtmlCodeBlocks && markdownStructureCount < 2) {
+            console.log('🌐 Determined: HTML (HTML code blocks, minimal markdown)');
+            return 'html';
+        }
+        
+        if (markdownStructureCount >= 1) {
+            console.log('📝 Determined: Markdown');
+            return 'markdown';
+        }
+        
+        console.log('📄 Determined: Plain text');
+        return 'text';
+    }
+
+    // Simple override for content type detection
+    getContentType(content) {
+        console.log('🎯 Simple content type check for:', content?.substring(0, 150) + '...');
+        
+        // Check if content has markdown headers (### HTML, ## CSS, etc.)
+        if (/#{1,6}\s+.+/m.test(content)) {
+            console.log('✅ Found markdown headers - treating as MARKDOWN');
+            return 'markdown';
+        }
+        
+        // Check if content starts with HTML tags (not in code blocks)
+        if (/^<!DOCTYPE|^<html|^<head|^<body/im.test(content)) {
+            console.log('✅ Found standalone HTML - treating as HTML');
+            return 'html';
+        }
+        
+        // Check if content has HTML code blocks
+        if (/```html[\s\S]*?```/i.test(content)) {
+            console.log('✅ Found HTML code blocks - treating as HTML');
+            return 'html';
+        }
+        
+        console.log('✅ No special formatting - treating as TEXT');
+        return 'text';
+    }
+
+    // Temporary test function to verify patterns
+    testPatterns() {
+        const testMarkdown = `
+# Test Header
+This is **bold** text and *italic* text.
+
+- List item 1
+- List item 2
+
+\`\`\`javascript
+console.log('code block');
+\`\`\`
+
+[Link](http://example.com)
+        `;
+        
+        const testHtml = `
+\`\`\`html
+<div>
+  <h1>Hello World</h1>
+  <p>This is HTML content</p>
+</div>
+\`\`\`
+        `;
+        
+        console.log('🧪 Testing Markdown:');
+        console.log('Result:', this.detectMarkdown(testMarkdown));
+        
+        console.log('🧪 Testing HTML:');
+        console.log('Result:', this.detectHtml(testHtml));
+        console.log('Strong HTML:', this.hasStrongHtmlPatterns(testHtml));
+    }
+
+    // ...existing code...
 }
 
 // Define the custom element

@@ -235,7 +235,7 @@
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
-    .viki-html {
+    .viki-html:not(.force-light-theme) {
         --bg-color: #0d1117;
         --text-color: #c9d1d9;
         --text-color-muted: #8b949e;
@@ -251,6 +251,48 @@
     }
 }
 
+/* Force light theme for modal contexts */
+.force-light-theme .viki-html,
+.html-modal-overlay .viki-html,
+viki-html.force-light-theme .viki-html {
+    --bg-color: #ffffff !important;
+    --text-color: #333333 !important;
+    --text-color-muted: #6a737d !important;
+    --border-color: #e1e4e8 !important;
+    --link-color: #0366d6 !important;
+    --code-bg-color: #f6f8fa !important;
+    --header-bg-color: #f6f8fa !important;
+    --alt-row-bg-color: #f9fafb !important;
+    --button-bg-color: #238636 !important;
+    --button-text-color: #ffffff !important;
+    --button-hover-bg-color: #2ea043 !important;
+    --button-active-bg-color: #1a7f37 !important;
+    background-color: #ffffff !important;
+    color: #333333 !important;
+}
+
+/* Force light theme even in dark mode media query */
+@media (prefers-color-scheme: dark) {
+    .force-light-theme .viki-html,
+    .html-modal-overlay .viki-html,
+    viki-html.force-light-theme .viki-html {
+        --bg-color: #ffffff !important;
+        --text-color: #333333 !important;
+        --text-color-muted: #6a737d !important;
+        --border-color: #e1e4e8 !important;
+        --link-color: #0366d6 !important;
+        --code-bg-color: #f6f8fa !important;
+        --header-bg-color: #f6f8fa !important;
+        --alt-row-bg-color: #f9fafb !important;
+        --button-bg-color: #238636 !important;
+        --button-text-color: #ffffff !important;
+        --button-hover-bg-color: #2ea043 !important;
+        --button-active-bg-color: #1a7f37 !important;
+        background-color: #ffffff !important;
+        color: #333333 !important;
+    }
+}
+
 /* Security indicator for sanitized content */
 .html-content::before {
     content: "🛡️ Content sanitized with DOMPurify";
@@ -262,6 +304,13 @@
     background-color: var(--code-bg-color, #f6f8fa);
     border-radius: 3px;
     border-left: 3px solid var(--link-color, #0366d6);
+}
+
+/* Hide security indicator in modal contexts and when forced light theme */
+.force-light-theme .html-content::before,
+.html-modal-overlay .html-content::before,
+viki-html.force-light-theme .html-content::before {
+    display: none !important;
 }
 
 /* Hide security indicator when empty */

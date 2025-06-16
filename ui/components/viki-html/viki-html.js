@@ -48,15 +48,18 @@ class VikiHtml extends BaseComponent {
     }
 
     async connectedCallback() {
+        console.log('🚀 VikiHtml connectedCallback called');
         try {
             const shadowRoot = await super.connectedCallback();
+            console.log('🚀 VikiHtml shadowRoot created:', !!shadowRoot);
             if (shadowRoot) {
                 this.setupEventListeners(shadowRoot);
                 await this.loadDOMPurify();
                 this.render();
+                console.log('✅ VikiHtml initialization complete');
             }
         } catch (error) {
-            console.error('Error in VikiHtml connectedCallback:', error);
+            console.error('❌ Error in VikiHtml connectedCallback:', error);
         }
     }
 
@@ -105,8 +108,11 @@ class VikiHtml extends BaseComponent {
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
+        console.log('🔄 VikiHtml attributeChanged:', name, 'newValue length:', newValue ? newValue.length : 0);
+        
         if (name === 'html-content') {
             this._htmlContent = newValue || '';
+            console.log('🔄 Setting HTML content:', this._htmlContent ? this._htmlContent.substring(0, 100) + '...' : 'Empty');
             this.render();
         } else if (name === 'allow-scripts') {
             this._allowScripts = newValue !== null;
@@ -366,25 +372,46 @@ class VikiHtml extends BaseComponent {
 
     // Render the HTML content
     render() {
-        if (!this._shadowRoot) return;
+        console.log('🎨 VikiHtml render called');
+        console.log('🎨 HTML content:', this._htmlContent ? this._htmlContent.substring(0, 200) + '...' : 'No content');
+        
+        if (!this._shadowRoot) {
+            console.log('❌ No shadowRoot in VikiHtml render');
+            return;
+        }
 
         const contentElement = this._shadowRoot.getElementById('html-content');
-        if (!contentElement) return;
+        if (!contentElement) {
+            console.log('❌ No content element found in VikiHtml render');
+            return;
+        }
+
+        // Check if we're in a modal context and apply modal-specific styling
+        this.applyModalStyling();
 
         if (!this._htmlContent) {
+            console.log('ℹ️ No HTML content to render');
             contentElement.innerHTML = '';
             return;
         }
 
         try {
+            console.log('🎨 Parsing content...');
             // Parse the content to extract HTML, CSS, and JavaScript
             const parsed = this.parseContent(this._htmlContent);
+            console.log('🎨 Parsed content:', { 
+                htmlLength: parsed.html.length, 
+                cssLength: parsed.css.length, 
+                jsLength: parsed.js.length 
+            });
             
             // Sanitize the HTML content
             const sanitizedHtml = this.sanitizeContent(parsed.html);
+            console.log('🎨 Sanitized HTML length:', sanitizedHtml.length);
             
             // Set the sanitized HTML content
             contentElement.innerHTML = sanitizedHtml;
+            console.log('🎨 Content set in DOM');
             
             // Apply CSS styles if allowed
             if (this._allowStyles && parsed.css) {
@@ -403,6 +430,92 @@ class VikiHtml extends BaseComponent {
             contentElement.innerHTML = `<div style="color: red; padding: 16px; border: 1px solid red; border-radius: 4px;">
                 <strong>Rendering Error:</strong> ${error.message}
             </div>`;
+        }
+    }
+
+    // Apply modal-specific styling when the component is in a modal context
+    applyModalStyling() {
+        if (!this._shadowRoot) return;
+
+        // Check if we're in a modal context
+        const isInModal = this.classList.contains('force-light-theme') ||
+                         this.closest('.html-modal-overlay') ||
+                         this.closest('.force-light-theme');
+
+        if (isInModal) {
+            console.log('🎨 VikiHtml detected modal context, applying light theme overrides');
+            
+            // Inject modal-specific styles into shadow DOM
+            let modalStyle = this._shadowRoot.querySelector('#modal-style-override');
+            if (!modalStyle) {
+                modalStyle = document.createElement('style');
+                modalStyle.id = 'modal-style-override';
+                modalStyle.textContent = `
+                    /* Force light theme in modal context */
+                    :host {
+                        --bg-color: #ffffff !important;
+                        --text-color: #333333 !important;
+                        --text-color-muted: #6a737d !important;
+                        --border-color: #e1e4e8 !important;
+                        --link-color: #0366d6 !important;
+                        --code-bg-color: #f6f8fa !important;
+                        --header-bg-color: #f6f8fa !important;
+                        --alt-row-bg-color: #f9fafb !important;
+                        --button-bg-color: #238636 !important;
+                        --button-text-color: #ffffff !important;
+                        --button-hover-bg-color: #2ea043 !important;
+                        --button-active-bg-color: #1a7f37 !important;
+                    }
+                    
+                    .viki-html {
+                        background-color: #ffffff !important;
+                        color: #333333 !important;
+                    }
+                    
+                    .html-content {
+                        background-color: #ffffff !important;
+                        color: #333333 !important;
+                    }
+                    
+                    /* Hide security indicator in modal */
+                    .html-content::before {
+                        display: none !important;
+                    }
+                    
+                    /* Override any dark theme media queries */
+                    @media (prefers-color-scheme: dark) {
+                        :host {
+                            --bg-color: #ffffff !important;
+                            --text-color: #333333 !important;
+                            --text-color-muted: #6a737d !important;
+                            --border-color: #e1e4e8 !important;
+                            --link-color: #0366d6 !important;
+                            --code-bg-color: #f6f8fa !important;
+                            --header-bg-color: #f6f8fa !important;
+                            --alt-row-bg-color: #f9fafb !important;
+                            --button-bg-color: #238636 !important;
+                            --button-text-color: #ffffff !important;
+                            --button-hover-bg-color: #2ea043 !important;
+                            --button-active-bg-color: #1a7f37 !important;
+                        }
+                        
+                        .viki-html {
+                            background-color: #ffffff !important;
+                            color: #333333 !important;
+                        }
+                        
+                        .html-content {
+                            background-color: #ffffff !important;
+                            color: #333333 !important;
+                        }
+                        
+                        .html-content::before {
+                            display: none !important;
+                        }
+                    }
+                `;
+                this._shadowRoot.appendChild(modalStyle);
+            }
         }
     }
 
