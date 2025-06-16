@@ -18,7 +18,8 @@ const componentFiles = [
     '../components/viki-chat-canvas/viki-chat-canvas.js',
     '../components/viki-card/viki-card.js',
     '../components/viki-left-splitter/viki-left-splitter.js',
-    '../components/viki-markdown/viki-markdown.js'
+    '../components/viki-markdown/viki-markdown.js',
+    '../components/viki-html/viki-html.js'
 ];
 
 componentFiles.forEach(file => {

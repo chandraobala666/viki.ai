@@ -62,13 +62,23 @@ class VikiMarkdown extends BaseComponent {
             
             // Customize link rendering to always open in new tab
             renderer.link = function(href, title, text) {
-                return `<a href="${href}" title="${title || ''}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+                // Handle cases where parameters might be objects or different types
+                const linkHref = typeof href === 'string' ? href : (href?.href || href?.toString() || '');
+                const linkTitle = typeof title === 'string' ? title : (title?.title || title?.toString() || '');
+                const linkText = typeof text === 'string' ? text : (text?.text || text?.toString() || '');
+                
+                return `<a href="${linkHref}" title="${linkTitle}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
             };
 
             // Customize code block rendering
-            renderer.code = function(code, language) {
-                const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                return `<pre><code class="language-${language || ''}">${escapedCode}</code></pre>`;
+            renderer.code = function(code, infostring, escaped) {
+                // Handle case where code might not be a string or might be an object
+                const codeText = typeof code === 'string' ? code : (code?.text || code?.toString() || '');
+                const language = infostring || '';
+                
+                // Only escape if not already escaped
+                const escapedCode = escaped ? codeText : codeText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<pre><code class="language-${language}">${escapedCode}</code></pre>`;
             };
 
             marked.setOptions({
@@ -267,18 +277,24 @@ class VikiMarkdown extends BaseComponent {
         const contentElement = this._shadowRoot.getElementById('markdown-content');
         if (!contentElement) return;
 
-        if (this._useHtml) {
-            // Check if marked library is available
-            if (this.isMarkedAvailable()) {
-                // Use marked library to convert markdown to HTML
-                contentElement.innerHTML = marked.parse(this._markdown);
+        try {
+            if (this._useHtml) {
+                // Check if marked library is available
+                if (this.isMarkedAvailable()) {
+                    // Use marked library to convert markdown to HTML
+                    contentElement.innerHTML = marked.parse(this._markdown);
+                } else {
+                    // Fallback to custom markdown parser if marked is not available
+                    console.warn('Marked library not available, using fallback parser');
+                    contentElement.innerHTML = this.markdownToHtml(this._markdown);
+                }
             } else {
-                // Fallback to custom markdown parser if marked is not available
-                console.warn('Marked library not available, using fallback parser');
-                contentElement.innerHTML = this.markdownToHtml(this._markdown);
+                // Otherwise, just display as plain text
+                contentElement.textContent = this._markdown;
             }
-        } else {
-            // Otherwise, just display as plain text
+        } catch (error) {
+            console.error('Error rendering markdown:', error);
+            // Fallback to plain text on error
             contentElement.textContent = this._markdown;
         }
     }
