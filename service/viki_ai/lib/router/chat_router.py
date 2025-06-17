@@ -7,6 +7,7 @@ from typing import List, Optional
 import uuid
 import logging
 import json
+import os
 from datetime import datetime
 
 from ..model.chat import ChatSession, ChatMessage
@@ -27,6 +28,13 @@ router = APIRouter(
     tags=["chat"],
     responses={404: {"description": "Not found"}},
 )
+
+def _get_llm_proxy_settings():
+    """Get LLM-specific proxy settings from environment variables."""
+    return {
+        'http_proxy': os.getenv("HTTPPROXY", None),
+        'https_proxy': os.getenv("HTTPSPROXY", None)
+    }
 
 # Chat Session endpoints
 @router.get("/sessions")
@@ -475,7 +483,9 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
                     logger.info("Converted config file content from binary to string")
 
         
-        # Create AI Chat Utility instance with agent-specific MCP configurations
+        # Create AI Chat Utility instance with agent-specific MCP configurations and LLM proxy settings
+        proxy_settings = _get_llm_proxy_settings()
+        
         chat_util = AIChatUtility(
             llm_provider=llm_provider,
             model_name=getattr(llm_config, 'llc_model_cd', ''),
@@ -484,7 +494,9 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
             base_url=getattr(llm_config, 'llc_endpoint_url', None),
             temperature=0.0,
             system_prompt=getattr(agent, 'agt_system_prompt', None),
-            agent_mcp_configs=agent_mcp_configs  # Pass agent-specific MCP configs
+            agent_mcp_configs=agent_mcp_configs,  # Pass agent-specific MCP configs
+            http_proxy=proxy_settings['http_proxy'],  # LLM-specific proxy settings
+            https_proxy=proxy_settings['https_proxy']  # LLM-specific proxy settings
         )
         
         # 6. Build conversation history for AI context

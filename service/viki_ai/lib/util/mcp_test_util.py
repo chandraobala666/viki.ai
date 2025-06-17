@@ -3,12 +3,45 @@ import asyncio
 import logging
 import os
 import tempfile
+import time
 from typing import Dict, List, Optional, Tuple
 
 from langchain_ollama import ChatOllama
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
 from langchain_mcp_adapters.tools import load_mcp_tools
+
+# Connection management constants
+MAX_RETRIES = 3
+BASE_DELAY = 0.5
+CONNECTION_SEMAPHORE = asyncio.Semaphore(2)  # Limit concurrent test connections
+
+async def _create_test_connection_with_retry(server_params: StdioServerParameters, max_retries: int = MAX_RETRIES):
+    """Create MCP test connection with retry logic."""
+    async with CONNECTION_SEMAPHORE:  # Limit concurrent connections
+        for attempt in range(max_retries):
+            try:
+                # Add delay before retry attempts
+                if attempt > 0:
+                    delay = BASE_DELAY * (2 ** (attempt - 1))
+                    logging.info(f"Retrying MCP test connection in {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                
+                # Return the connection context manager
+                return stdio_client(server_params)
+                
+            except Exception as e:
+                logging.warning(f"MCP test connection attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    # Last attempt failed
+                    logging.error(f"All {max_retries} test connection attempts failed")
+                    raise
+                
+                # For BlockingIOError specifically, add additional delay
+                if "Resource temporarily unavailable" in str(e) or "BlockingIOError" in str(e):
+                    additional_delay = 1.0 * (attempt + 1)
+                    logging.info(f"Resource contention detected, adding {additional_delay:.2f}s additional delay")
+                    await asyncio.sleep(additional_delay)
 
 
 async def test_mcp_configuration(
@@ -46,10 +79,12 @@ async def test_mcp_configuration(
         )
         
         # Test connection and count tools
-        async with stdio_client(server_params) as (read, write):  # type: ignore
+        connection_manager = await _create_test_connection_with_retry(server_params)
+        
+        async with connection_manager as (read, write):  # type: ignore
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                logging.info("MCP connection initialized successfully")
+                logging.info("MCP test connection initialized successfully")
                 
                 # Load MCP tools and count them
                 tools = await load_mcp_tools(session)
@@ -64,7 +99,7 @@ async def test_mcp_configuration(
                         "type": "function"
                     })
                 
-                logging.info(f"Successfully loaded {tool_count} MCP tools")
+                logging.info(f"Successfully loaded {tool_count} MCP tools in test")
                 return True, tool_count, None, functions
                 
     except Exception as e:

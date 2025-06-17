@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import warnings
+import time
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -17,6 +19,18 @@ from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
 from openinference.instrumentation.langchain import LangChainInstrumentor
 
+# Import connection error types for better error handling
+try:
+    from groq import APIConnectionError as GroqAPIConnectionError, BadRequestError as GroqBadRequestError
+    from httpx import ConnectError as HttpxConnectError, ProxyError as HttpxProxyError
+    from httpcore import ConnectError as HttpcoreConnectError
+except ImportError:
+    GroqAPIConnectionError = Exception
+    GroqBadRequestError = Exception
+    HttpxConnectError = Exception
+    HttpxProxyError = Exception
+    HttpcoreConnectError = Exception
+
 import phoenix as px
 from phoenix.otel import register
 
@@ -29,23 +43,57 @@ from langgraph.prebuilt import create_react_agent
 # Import MCP test utility
 from .mcp_test_util import test_mcp_configuration, test_mcp_configuration_sync
 
+# Import LLM-specific proxy configuration
+from .proxy_config import get_llm_proxy_env_vars
+
+# Suppress SQLAlchemy warnings about Phoenix's expression-based indices globally
+# These warnings are harmless and occur during Phoenix initialization
+try:
+    from sqlalchemy.exc import SAWarning
+    warnings.filterwarnings("ignore", 
+                          message=".*Skipped unsupported reflection of expression-based index.*", 
+                          category=SAWarning)
+except ImportError:
+    pass  # SQLAlchemy might not be available or version might be different
+
 # Initialize Phoenix instrumentation globally
 # This should be done once per application startup
 def initialize_phoenix_instrumentation():
     """Initialize Phoenix instrumentation for LangChain tracing."""
     try:
-        # Set environment variable for Phoenix project
-        import os
-        os.environ["PHOENIX_PROJECT_NAME"] = "viki-ai-langchain-traces"
-        
-        # Launch Phoenix app and get session
-        session = px.launch_app()
-        
-        # Setup instrumentation with minimal configuration
-        register()
-        
-        # Instrument LangChain
-        LangChainInstrumentor().instrument()
+        # Suppress SQLAlchemy warnings about expression-based indices during Phoenix initialization
+        with warnings.catch_warnings():
+            # Filter out specific SQLAlchemy warnings about unsupported reflection of expression-based indices
+            warnings.filterwarnings("ignore", 
+                                  message=".*Skipped unsupported reflection of expression-based index.*", 
+                                  category=Warning)
+            # Also try to filter SQLAlchemy SAWarning specifically
+            try:
+                from sqlalchemy.exc import SAWarning
+                warnings.filterwarnings("ignore", 
+                                      message=".*ix_cumulative_llm_token_count_total.*", 
+                                      category=SAWarning)
+                warnings.filterwarnings("ignore", 
+                                      message=".*ix_latency.*", 
+                                      category=SAWarning)
+                warnings.filterwarnings("ignore", 
+                                      message=".*Skipped unsupported reflection of expression-based index.*", 
+                                      category=SAWarning)
+            except ImportError:
+                pass  # SQLAlchemy might not be available or version might be different
+            
+            # Set environment variable for Phoenix project
+            import os
+            os.environ["PHOENIX_PROJECT_NAME"] = "viki-ai-langchain-traces"
+            
+            # Launch Phoenix app and get session
+            session = px.launch_app()
+            
+            # Setup instrumentation with minimal configuration
+            register()
+            
+            # Instrument LangChain
+            LangChainInstrumentor().instrument()
         
         logging.info("Phoenix instrumentation initialized successfully")
         logging.info(f"Phoenix UI available at: http://127.0.0.1:6006")
@@ -114,7 +162,9 @@ class AIChatUtility:
                  temperature: float = 0.0,
                  system_prompt: Optional[str] = None,
                  mcp_server_config: Optional[Dict[str, Any]] = None,
-                 agent_mcp_configs: Optional[List[Dict[str, Any]]] = None):
+                 agent_mcp_configs: Optional[List[Dict[str, Any]]] = None,
+                 http_proxy: Optional[str] = None,
+                 https_proxy: Optional[str] = None):
         """
         Initialize the AI Chat Utility.
         
@@ -127,6 +177,8 @@ class AIChatUtility:
             system_prompt: Custom system prompt for the chat session
             mcp_server_config: Configuration dictionary for MCP server parameters (legacy, deprecated)
             agent_mcp_configs: List of agent-specific MCP configurations for individual tools
+            http_proxy: HTTP proxy URL for LLM calls only (not global)
+            https_proxy: HTTPS proxy URL for LLM calls only (not global)
         """
         self.llm_provider = llm_provider.lower()
         self.model_name = model_name
@@ -134,6 +186,10 @@ class AIChatUtility:
         self.base_url = base_url
         self.temperature = temperature
         self.config_file_content = config_file_content or {}
+        
+        # Store LLM-specific proxy settings (not global)
+        self.http_proxy = http_proxy
+        self.https_proxy = https_proxy
         
         # Setup logging first
         self.logger = logging.getLogger(__name__)
@@ -150,21 +206,24 @@ class AIChatUtility:
             self.mcp_server_config = mcp_server_config 
             self.logger.info("Using legacy single MCP configuration")
         
+        # Connection management for preventing resource contention
+        self._connection_semaphore = asyncio.Semaphore(3)  # Limit concurrent MCP connections
+        self._max_retries = 3
+        self._base_delay = 0.5  # Base delay for exponential backoff
+        
         # Default system prompt for OFSLL application
         self.system_prompt = system_prompt or (
-            "You are a helpful assistant specialized in querying and updating OFSLL application using API. "
+            "You are a helpful assistant specialized in supporting user requests."
             "Don't hallucinate or make up answers. "
             "If you cannot answer the question, say 'I don't know'. "
             "Use the tools provided to answer the user's questions. "
-            "For tool calls, don't make up input parameters, use the input parameters as is. "
-            "If you are not sure about the input parameters, then use default values."
         )
         
         # Initialize session variables
         self.model = None
         self.tools = None
         self.agent = None
-        self.session_id = None
+        self.session_id: Optional[str] = None
         # Initialize message history with system prompt
         self.message_history: List[Dict[str, Any]] = [
             {"role": "system", "content": self.system_prompt}
@@ -193,6 +252,7 @@ class AIChatUtility:
         self.logger.info(f"Configuring LLM model: {self.llm_provider}")
         
         try:
+                
             if self.llm_provider == "ollama":
                 self.model = ChatOllama(
                     model=self.model_name,
@@ -202,29 +262,96 @@ class AIChatUtility:
             elif self.llm_provider == "openai":
                 if not self.api_key:
                     raise ValueError("API key is required for OpenAI")
-                self.model = ChatOpenAI(
-                    model=self.model_name,
-                    api_key=SecretStr(self.api_key),
-                    temperature=self.temperature
-                )
+                
+                # Configure OpenAI with proxy settings for corporate networks
+                openai_kwargs = {
+                    "model": self.model_name,
+                    "api_key": SecretStr(self.api_key),
+                    "temperature": self.temperature
+                }
+                
+                # Add HTTP client configuration for proxy support
+                if self.http_proxy or self.https_proxy:
+                    import httpx
+                    
+                    # Create proxy configuration for httpx
+                    proxy_url = self.https_proxy or self.http_proxy
+                    
+                    # Create httpx client with proxy settings
+                    http_client = httpx.Client(proxy=proxy_url)
+                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
+                    
+                    openai_kwargs["http_client"] = http_client
+                    openai_kwargs["http_async_client"] = async_http_client
+                    
+                    self.logger.info(f"Configured OpenAI with proxy: {proxy_url}")
+                
+                self.model = ChatOpenAI(**openai_kwargs)
                 
             elif self.llm_provider == "groq":
                 if not self.api_key:
                     raise ValueError("API key is required for Groq")
-                self.model = ChatGroq(
-                    model=self.model_name,
-                    api_key=SecretStr(self.api_key), # type: ignore
-                    temperature=self.temperature
-                )
+                
+                # Configure Groq with proxy settings for corporate networks
+                groq_kwargs = {
+                    "model": self.model_name,
+                    "api_key": SecretStr(self.api_key),
+                    "temperature": self.temperature
+                }
+                
+                # Add HTTP client configuration for proxy support
+                if self.http_proxy or self.https_proxy:
+                    import httpx
+                    
+                    # Create proxy configuration for httpx
+                    proxy_url = self.https_proxy or self.http_proxy
+                    
+                    # Create httpx client with proxy settings
+                    http_client = httpx.Client(proxy=proxy_url)
+                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
+                    
+                    groq_kwargs["http_client"] = http_client
+                    groq_kwargs["http_async_client"] = async_http_client
+                    
+                    self.logger.info(f"Configured Groq with proxy: {proxy_url}")
+                
+                self.model = ChatGroq(**groq_kwargs)
                 
             elif self.llm_provider == "azure":
                 if not self.api_key:
                     raise ValueError("API key is required for Azure AI")
+                
                 os.environ["AZURE_INFERENCE_CREDENTIAL"] = self.api_key
-                self.model = AzureAIChatCompletionsModel(
-                    model=self.model_name,
-                    endpoint=self.base_url or "https://models.github.ai/inference"
-                )
+                
+                # Configure proxy via temporary environment variables for Azure AI
+                # Store original values to restore later
+                original_http_proxy = os.environ.get("HTTP_PROXY")
+                original_https_proxy = os.environ.get("HTTPS_PROXY")
+                
+                try:
+                    if self.http_proxy or self.https_proxy:
+                        proxy_url = self.https_proxy or self.http_proxy
+                        if proxy_url:
+                            os.environ["HTTP_PROXY"] = proxy_url
+                            os.environ["HTTPS_PROXY"] = proxy_url
+                            self.logger.info(f"Temporarily configured Azure with proxy via environment variables: {proxy_url}")
+
+                    self.model = AzureAIChatCompletionsModel(
+                        model=self.model_name,
+                        endpoint=self.base_url or "https://models.github.ai/inference"
+                    )
+                    
+                finally:
+                    # Restore original environment variables
+                    if original_http_proxy is not None:
+                        os.environ["HTTP_PROXY"] = original_http_proxy
+                    elif "HTTP_PROXY" in os.environ:
+                        del os.environ["HTTP_PROXY"]
+                        
+                    if original_https_proxy is not None:
+                        os.environ["HTTPS_PROXY"] = original_https_proxy
+                    elif "HTTPS_PROXY" in os.environ:
+                        del os.environ["HTTPS_PROXY"]
 
             elif self.llm_provider == "huggingface":
                 if not self.api_key:
@@ -232,12 +359,83 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for HuggingFace")
 
-                llm = HuggingFaceEndpoint(
+                # HuggingFace has notorious proxy issues. Try multiple approaches.
+                if self.http_proxy or self.https_proxy:
+                    proxy_url = self.https_proxy or self.http_proxy
+                    if proxy_url:
+                        self.logger.warning(f"Attempting HuggingFace proxy configuration with: {proxy_url}")
+                        self.logger.warning("Note: HuggingFace has known proxy compatibility issues")
+                        
+                        # Store original environment to restore later if needed
+                        original_env = {
+                            'HTTP_PROXY': os.environ.get('HTTP_PROXY'),
+                            'HTTPS_PROXY': os.environ.get('HTTPS_PROXY'),
+                            'http_proxy': os.environ.get('http_proxy'),
+                            'https_proxy': os.environ.get('https_proxy'),
+                        }
+                        
+                        try:
+                            # Test proxy connection first
+                            if not self._test_huggingface_proxy_connection(proxy_url):
+                                self.logger.warning("HuggingFace proxy test failed, but attempting to continue...")
+                            
+                            # Set all possible proxy environment variables
+                            os.environ["HTTP_PROXY"] = proxy_url
+                            os.environ["HTTPS_PROXY"] = proxy_url
+                            os.environ["http_proxy"] = proxy_url
+                            os.environ["https_proxy"] = proxy_url
+                            
+                            # Try to monkey-patch aiohttp ClientSession to force proxy usage
+                            try:
+                                import aiohttp
+                                from functools import partial
+                                
+                                # Store original ClientSession init
+                                original_init = aiohttp.ClientSession.__init__
+                                
+                                def patched_init(self, *args, trust_env=True, **kwargs):
+                                    # Force trust_env=True to read proxy from environment
+                                    return original_init(self, *args, trust_env=True, **kwargs)
+                                
+                                # Apply the patch
+                                aiohttp.ClientSession.__init__ = patched_init
+                                
+                                self.logger.debug("Applied aiohttp proxy patch")
+                                
+                            except Exception as e:
+                                self.logger.debug(f"Could not patch aiohttp: {e}")
+                            
+                            # Create HuggingFace endpoint with additional timeout
+                            llm = HuggingFaceEndpoint(
+                                huggingfacehub_api_token=self.api_key,
+                                repo_id=self.model_name,
+                                task="text-generation"
+                            )  # type: ignore
+                            self.model = ChatHuggingFace(llm=llm)
+                            
+                            self.logger.info("HuggingFace model created with proxy configuration")
+                            
+                        except Exception as e:
+                            self.logger.error(f"HuggingFace proxy configuration failed: {e}")
+                            # Restore original environment
+                            for key, value in original_env.items():
+                                if value is not None:
+                                    os.environ[key] = value
+                                elif key in os.environ:
+                                    del os.environ[key]
+                            
+                            # Provide helpful alternatives
+                            self._suggest_huggingface_alternatives()
+                            raise ValueError(f"HuggingFace proxy setup failed: {e}")
+                        
+                else:
+                    # No proxy configuration needed
+                    llm = HuggingFaceEndpoint(
                         huggingfacehub_api_token=self.api_key,
                         repo_id=self.model_name,
                         task="text-generation"
                     )  # type: ignore
-                self.model = ChatHuggingFace(llm=llm)
+                    self.model = ChatHuggingFace(llm=llm)
 
             elif self.llm_provider == "cerebras":
                 if not self.api_key:
@@ -245,11 +443,30 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for Cerebras")
 
-                self.model = ChatCerebras(
-                    model=self.model_name,
-                    api_key=SecretStr(self.api_key),
-                    temperature=self.temperature
-                )
+                # Configure Cerebras with proxy settings for corporate networks
+                cerebras_kwargs = {
+                    "model": self.model_name,
+                    "api_key": SecretStr(self.api_key),
+                    "temperature": self.temperature
+                }
+                
+                # Add HTTP client configuration for proxy support
+                if self.http_proxy or self.https_proxy:
+                    import httpx
+                    
+                    # Create proxy configuration for httpx
+                    proxy_url = self.https_proxy or self.http_proxy
+                    
+                    # Create httpx client with proxy settings
+                    http_client = httpx.Client(proxy=proxy_url)
+                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
+                    
+                    cerebras_kwargs["http_client"] = http_client
+                    cerebras_kwargs["http_async_client"] = async_http_client
+                    
+                    self.logger.info(f"Configured Cerebras with proxy: {proxy_url}")
+
+                self.model = ChatCerebras(**cerebras_kwargs)
 
             elif self.llm_provider == "openrouter":
                 if not self.api_key:
@@ -257,13 +474,32 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for OpenRouter")
             
+                # Configure OpenRouter with proxy settings for corporate networks
+                openrouter_kwargs = {
+                    "model": self.model_name,
+                    "api_key": SecretStr(self.api_key),
+                    "temperature": self.temperature,
+                    "base_url": "https://openrouter.ai/api/v1"
+                }
+                
+                # Add HTTP client configuration for proxy support
+                if self.http_proxy or self.https_proxy:
+                    import httpx
+                    
+                    # Create proxy configuration for httpx
+                    proxy_url = self.https_proxy or self.http_proxy
+                    
+                    # Create httpx client with proxy settings
+                    http_client = httpx.Client(proxy=proxy_url)
+                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
+                    
+                    openrouter_kwargs["http_client"] = http_client
+                    openrouter_kwargs["http_async_client"] = async_http_client
+                    
+                    self.logger.info(f"Configured OpenRouter with proxy: {proxy_url}")
+
                 # Custom OpenRouter implementation
-                self.model = ChatOpenAI(
-                    model=self.model_name,
-                    api_key=SecretStr(self.api_key),
-                    temperature=self.temperature,
-                    base_url="https://openrouter.ai/api/v1"
-                )
+                self.model = ChatOpenAI(**openrouter_kwargs)
 
             elif self.llm_provider == "anthropic":
                 if not self.api_key:
@@ -271,11 +507,37 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for Anthropic")
 
-                self.model = ChatAnthropic(
-                    model=self.model_name, # type: ignore
-                    api_key=SecretStr(self.api_key),
-                    temperature=self.temperature
-                )
+                # Configure Anthropic with proxy settings for corporate networks
+                # Anthropic doesn't support direct HTTP client configuration like OpenAI/Groq
+                # We need to use environment variables approach
+                original_http_proxy = self.http_proxy
+                original_https_proxy = self.https_proxy
+                
+                try:
+                    if self.http_proxy or self.https_proxy:
+                        proxy_url = self.https_proxy or self.http_proxy
+                        if proxy_url:
+                            os.environ["HTTP_PROXY"] = proxy_url
+                            os.environ["HTTPS_PROXY"] = proxy_url
+                            self.logger.info(f"Temporarily configured Anthropic with proxy via environment variables: {proxy_url}")
+
+                    self.model = ChatAnthropic(
+                        model=self.model_name,  # type: ignore
+                        api_key=SecretStr(self.api_key),
+                        temperature=self.temperature
+                    )
+                    
+                finally:
+                    # Restore original environment variables
+                    if original_http_proxy is not None:
+                        os.environ["HTTP_PROXY"] = original_http_proxy
+                    elif "HTTP_PROXY" in os.environ:
+                        del os.environ["HTTP_PROXY"]
+                        
+                    if original_https_proxy is not None:
+                        os.environ["HTTPS_PROXY"] = original_https_proxy
+                    elif "HTTPS_PROXY" in os.environ:
+                        del os.environ["HTTPS_PROXY"]
 
             elif self.llm_provider == "aws":
                 if not self.model_name:
@@ -320,14 +582,39 @@ class AIChatUtility:
                         f"Please ensure your configuration file contains: access_key, secret_key, and region."
                     )
                 
-                # Configure AWS credentials
-                self.model = ChatBedrock(
-                    model=self.model_name,
-                    aws_access_key_id=aws_access_key,
-                    aws_secret_access_key=aws_secret_key,
-                    region=aws_region,
-                    temperature=self.temperature
-                )
+                # Configure proxy via temporary environment variables for AWS Bedrock
+                # Store original values to restore later
+                original_http_proxy = os.environ.get("HTTP_PROXY")
+                original_https_proxy = os.environ.get("HTTPS_PROXY")
+                
+                try:
+                    if self.http_proxy or self.https_proxy:
+                        proxy_url = self.https_proxy or self.http_proxy
+                        if proxy_url:
+                            os.environ["HTTP_PROXY"] = proxy_url
+                            os.environ["HTTPS_PROXY"] = proxy_url
+                            self.logger.info(f"Temporarily configured AWS Bedrock with proxy via environment variables: {proxy_url}")
+                
+                    # Configure AWS credentials
+                    self.model = ChatBedrock(
+                        model=self.model_name,
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key,
+                        region=aws_region,
+                        temperature=self.temperature
+                    )
+                    
+                finally:
+                    # Restore original environment variables
+                    if original_http_proxy is not None:
+                        os.environ["HTTP_PROXY"] = original_http_proxy
+                    elif "HTTP_PROXY" in os.environ:
+                        del os.environ["HTTP_PROXY"]
+                        
+                    if original_https_proxy is not None:
+                        os.environ["HTTPS_PROXY"] = original_https_proxy
+                    elif "HTTPS_PROXY" in os.environ:
+                        del os.environ["HTTPS_PROXY"]
 
             else:
                 raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
@@ -336,7 +623,18 @@ class AIChatUtility:
             return self.model
             
         except Exception as e:
-            self.logger.error(f"Error configuring LLM: {str(e)}")
+            # Enhanced error handling for common connection issues
+            error_msg = str(e)
+            if "Connect call failed" in error_msg or "Cannot connect to host" in error_msg:
+                proxy_info = ""
+                if self.http_proxy or self.https_proxy:
+                    proxy_info = f" Current proxy settings - HTTP: {self.http_proxy}, HTTPS: {self.https_proxy}"
+                
+                self.logger.error(f"Connection failed to {self.llm_provider} endpoint. This may be due to proxy configuration issues.{proxy_info}")
+                self.logger.error(f"Original error: {error_msg}")
+            
+            else:
+                self.logger.error(f"Error configuring LLM: {error_msg}")
             raise
     
     def get_server_params(self, server_config: Optional[Dict[str, Any]] = None) -> StdioServerParameters:
@@ -368,10 +666,22 @@ class AIChatUtility:
             command = config.get("command", "uv")
             args = config.get("args", ["run", "openapi_mcp_server"])
         
+        # Get base environment from config
+        env = config.get("env", {}).copy()
+        
+        # Add LLM-specific proxy environment variables if they are configured
+        if self.http_proxy or self.https_proxy:
+            llm_proxy_env = get_llm_proxy_env_vars(
+                http_proxy=self.http_proxy or "",
+                https_proxy=self.https_proxy or ""
+            )
+            env.update(llm_proxy_env)
+            self.logger.debug(f"Added LLM proxy environment variables for MCP server: {llm_proxy_env}")
+        
         return StdioServerParameters(
             command=command,
             args=args,
-            env=config.get("env", {})
+            env=env
         )
     
     async def test_mcp_configuration(self, server_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -398,13 +708,14 @@ class AIChatUtility:
                 }
             
             # Extract mcp_command and environment variables
+            mcp_command = ""
             if "mcp_command" in config:
                 mcp_command = config["mcp_command"]
-            else:
-                # Construct command from legacy format
-                command = config.get("command", "uv")
-                args = config.get("args", ["run", "openapi_mcp_server"])
-                mcp_command = f"{command} {' '.join(args)}"
+            # else:
+            #     # Construct command from legacy format
+            #     command = config.get("command", "uv")
+            #     args = config.get("args", ["run", "openapi_mcp_server"])
+            #     mcp_command = f"{command} {' '.join(args)}"
             
             env_vars = config.get("env", {})
             
@@ -453,13 +764,14 @@ class AIChatUtility:
                 }
             
             # Extract mcp_command and environment variables
+            mcp_command = ""
             if "mcp_command" in config:
                 mcp_command = config["mcp_command"]
-            else:
-                # Construct command from legacy format
-                command = config.get("command", "uv")
-                args = config.get("args", ["run", "openapi_mcp_server"])
-                mcp_command = f"{command} {' '.join(args)}"
+            # else:
+            #     # Construct command from legacy format
+            #     command = config.get("command", "uv")
+            #     args = config.get("args", ["run", "openapi_mcp_server"])
+            #     mcp_command = f"{command} {' '.join(args)}"
             
             env_vars = config.get("env", {})
             
@@ -500,32 +812,6 @@ class AIChatUtility:
                 "functions": None
             }
 
-    async def load_mcp_tools(self, session: ClientSession) -> List[Any]:
-        """
-        Load MCP tools using an existing session.
-        
-        Args:
-            session: Active MCP ClientSession
-            
-        Returns:
-            List of loaded MCP tools
-        """
-        try:
-            tools = await load_mcp_tools(session)
-            self.tools = tools
-            
-            self.logger.info(f"Successfully loaded {len(tools)} MCP tools")
-            for i, tool in enumerate(tools, 1):
-                tool_name = getattr(tool, 'name', 'Unknown')
-                tool_description = getattr(tool, 'description', 'No description available')
-                self.logger.debug(f"{i}. {tool_name}: {tool_description}")
-            
-            return tools
-            
-        except Exception as e:
-            self.logger.error(f"Error loading MCP tools: {str(e)}")
-            raise
-    
     async def load_agent_specific_tools(self) -> List[Any]:
         """
         Load MCP tools from agent-specific configurations.
@@ -556,23 +842,19 @@ class AIChatUtility:
                 self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
                 
                 # Create MCP connection for this tool
-                async with stdio_client(server_params) as (read, write):  # type: ignore
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        self.logger.debug(f"MCP connection initialized for tool {tool_name}")
-                        
-                        # Load MCP tools for this specific configuration
-                        tools = await load_mcp_tools(session)
-                        all_tools.extend(tools)
-                        
-                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
-                        self.logger.info(f"✓ Loaded {len(tools)} tools from '{tool_name}': {tool_names}")
-                        successful_tools.append({
-                            "tool_id": tool_id,
-                            "tool_name": tool_name,
-                            "loaded_count": len(tools),
-                            "tool_names": tool_names
-                        })
+                async with self._managed_mcp_session(server_params, tool_name) as session:
+                    # Load MCP tools for this specific configuration
+                    tools = await load_mcp_tools(session)
+                    all_tools.extend(tools)
+                    
+                    tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
+                    self.logger.info(f"✓ Loaded {len(tools)} tools from '{tool_name}': {tool_names}")
+                    successful_tools.append({
+                        "tool_id": tool_id,
+                        "tool_name": tool_name,
+                        "loaded_count": len(tools),
+                        "tool_names": tool_names
+                    })
                         
             except Exception as e:
                 error_msg = f"Error loading tools for '{tool_name}' (ID: {tool_id}): {str(e)}"
@@ -681,28 +963,67 @@ class AIChatUtility:
                     self.logger.info("🤖 REACT agent created with persistent connection tools")
                     
                     # Run the agent with messages while connections are maintained
-                    agent_response = await agent.ainvoke({"messages": langchain_messages})
-                    self.logger.info("✅ Agent executed successfully with persistent connections")
+                    try:
+                        # Set proxy variables before LLM call
+                        # self.set_proxy_variables()
+                        
+                        agent_response = await agent.ainvoke({"messages": langchain_messages})
+                        self.logger.info("✅ Agent executed successfully with persistent connections")
+                    except (GroqBadRequestError, Exception) as e:
+                        # Handle specific tool call errors
+                        error_str = str(e)
+                        if ("BadRequestError" in error_str and "tool_use_failed" in error_str) or \
+                           ("Failed to call a function" in error_str) or \
+                           isinstance(e, GroqBadRequestError):
+                            
+                            # Check if this is a get_column_details error with missing schema
+                            if "get_column_details" in error_str and "table_name" in error_str:
+                                self.logger.error(f"❌ get_column_details called with missing schema parameter: {error_str}")
+                                from langchain_core.messages import AIMessage
+                                error_message = (
+                                    "I tried to get column details for a table, but the function requires both "
+                                    "a table name AND a schema. For OFSLL database tables, the schema is typically 'public'. "
+                                    "Could you please specify what specific information you're looking for? For example:\n\n"
+                                    "- 'Show me the structure of the ACCOUNTS table'\n"
+                                    "- 'What columns are in the CUSTOMERS table?'\n"
+                                    "- 'Get details for a specific account number'\n\n"
+                                    "I'll make sure to include the proper schema when calling the function."
+                                )
+                            else:
+                                self.logger.error(f"❌ Tool call failed - likely missing required parameters: {error_str}")
+                                from langchain_core.messages import AIMessage
+                                error_message = (
+                                    "I encountered an error when trying to use a tool. It seems like the tool requires "
+                                    "specific parameters that weren't provided correctly. Could you please provide more specific "
+                                    "information about what you're looking for? For example:\n\n"
+                                    "- If you want account details, please provide the account number\n"
+                                    "- If you want column details, please specify the table name\n"
+                                    "- If you want to make a payment, please provide the payment details\n\n"
+                                    f"Technical error: Tool call failed with incomplete arguments"
+                                )
+                            return {"messages": [AIMessage(content=error_message)]}
+                        else:
+                            # Re-raise other errors
+                            raise
+                    finally:
+                        # Unset proxy variables after LLM call completion
+                        self.unset_proxy_variables()
                     
                     return agent_response
                 
                 # Recursive case: establish connection for current context
                 ctx = contexts[index]
                 try:
-                    async with stdio_client(ctx['server_params']) as (read, write):  # type: ignore
-                        async with ClientSession(read, write) as session:
-                            await session.initialize()
-                            self.logger.debug(f"Connection established for {ctx['tool_name']}")
-                            
-                            # Load tools for this connection
-                            tools = await load_mcp_tools(session)
-                            all_tools.extend(tools)
-                            
-                            tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
-                            self.logger.info(f"✓ Loaded {len(tools)} tools from '{ctx['tool_name']}': {tool_names}")
-                            
-                            # Recursively establish remaining connections
-                            return await create_nested_connections(contexts, index + 1)
+                    async with self._managed_mcp_session(ctx['server_params'], ctx['tool_name']) as session:
+                        # Load tools for this connection
+                        tools = await load_mcp_tools(session)
+                        all_tools.extend(tools)
+                        
+                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
+                        self.logger.info(f"✓ Loaded {len(tools)} tools from '{ctx['tool_name']}': {tool_names}")
+                        
+                        # Recursively establish remaining connections
+                        return await create_nested_connections(contexts, index + 1)
                             
                 except Exception as e:
                     error_msg = f"Error in persistent connection for '{ctx['tool_name']}': {str(e)}"
@@ -718,382 +1039,378 @@ class AIChatUtility:
             self.logger.error(f"Error in persistent connection management: {str(e)}")
             return None
 
-    async def initialize_session(self, validate_mcp: bool = True) -> str:
+    async def _create_mcp_connection_with_retry(self, server_params: StdioServerParameters, tool_name: str = "unknown"):
         """
-        Initialize a new chat session with LLM and MCP tools.
+        Create MCP connection with retry logic and resource management.
         
         Args:
-            validate_mcp: Whether to validate MCP configuration before initialization
-        
+            server_params: MCP server parameters
+            tool_name: Name of the tool for logging
+            
         Returns:
-            str: Session ID for tracking the chat session
+            Context manager for stdio_client
+            
+        Raises:
+            Exception: If all retry attempts fail
         """
+        async with self._connection_semaphore:  # Limit concurrent connections
+            for attempt in range(self._max_retries):
+                try:
+                    # Add small delay before each attempt (exponential backoff)
+                    if attempt > 0:
+                        delay = self._base_delay * (2 ** (attempt - 1))
+                        self.logger.info(f"Retrying MCP connection for {tool_name} in {delay:.2f}s (attempt {attempt + 1}/{self._max_retries})")
+                        await asyncio.sleep(delay)
+                    
+                    # Return the connection context manager
+                    return stdio_client(server_params)
+                    
+                except Exception as e:
+                    self.logger.warning(f"MCP connection attempt {attempt + 1} failed for {tool_name}: {str(e)}")
+                    if attempt == self._max_retries - 1:
+                        # Last attempt failed
+                        self.logger.error(f"All {self._max_retries} connection attempts failed for {tool_name}")
+                        raise
+                    
+                    # For BlockingIOError specifically, add additional delay
+                    if "Resource temporarily unavailable" in str(e) or "BlockingIOError" in str(e):
+                        additional_delay = 1.0 * (attempt + 1)
+                        self.logger.info(f"Resource contention detected, adding {additional_delay:.2f}s additional delay")
+                        await asyncio.sleep(additional_delay)
+
+    @asynccontextmanager
+    async def _managed_mcp_session(self, server_params: StdioServerParameters, tool_name: str = "unknown"):
+        """
+        Context manager for MCP sessions with proper cleanup and error handling.
+        
+        Args:
+            server_params: MCP server parameters
+            tool_name: Name of the tool for logging
+            
+        Yields:
+            ClientSession instance
+        """
+        connection_manager = None
+        session = None
+        
         try:
-            # Generate session ID
-            self.session_id = f"chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            # Create connection with retry
+            connection_manager = await self._create_mcp_connection_with_retry(server_params, tool_name)
             
-            # Validate MCP configuration if requested
-            if validate_mcp:
-                self.logger.info("Validating MCP configuration...")
-                test_result = await self.test_mcp_configuration()
-                if not test_result["success"]:
-                    raise ValueError(f"MCP configuration validation failed: {test_result['error_message']}")
-                self.logger.info(f"MCP configuration validated successfully. Found {test_result['function_count']} functions.")
-            
-            # Configure LLM
-            if not self.model:
-                self.configure_llm()
-            
-            # Initialize MCP connection and load tools
-            server_params = self.get_server_params()
-            
-            # Use a simpler approach for MCP connection
-            async with stdio_client(server_params) as (read, write):  # type: ignore
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    self.logger.info("MCP connection initialized")
-                    
-                    # Load MCP tools
-                    await self.load_mcp_tools(session)
-                    
-                    # Create REACT agent
-                    if self.model and self.tools:
-                        self.agent = create_react_agent(self.model, self.tools)
-                        self.logger.info("REACT agent created")
-                    else:
-                        raise ValueError("Model or tools not properly initialized")
-            
-            # Initialize message history with system prompt
-            self.message_history = [
-                {"role": "system", "content": self.system_prompt}
-            ]
-            
-            self.logger.info(f"Chat session initialized: {self.session_id}")
-            return self.session_id
+            # Use the connection manager
+            async with connection_manager as (read, write):  # type: ignore
+                # Create and initialize session
+                session = ClientSession(read, write)
+                await session.initialize()
+                self.logger.debug(f"MCP session initialized for {tool_name}")
+                
+                yield session
             
         except Exception as e:
-            self.logger.error(f"Error initializing session: {str(e)}")
+            self.logger.error(f"Error in managed MCP session for {tool_name}: {str(e)}")
             raise
+
+    def set_proxy_variables(self):
+        """
+        Set proxy environment variables before LLM call.
+        Store original values for restoration.
+        """
+        try:
+            # Skip proxy settings for Ollama
+            if self.llm_provider == "ollama":
+                self.logger.debug("Skipping proxy configuration for Ollama")
+                return
+                
+            # Store original proxy environment variables
+            self._original_http_proxy = os.environ.get('HTTP_PROXY')
+            self._original_https_proxy = os.environ.get('HTTPS_PROXY')
+            self._original_http_proxy_lower = os.environ.get('http_proxy')
+            self._original_https_proxy_lower = os.environ.get('https_proxy')
+            
+            # Set LLM-specific proxy environment variables if configured
+            if self.http_proxy:
+                os.environ['HTTP_PROXY'] = self.http_proxy
+                os.environ['http_proxy'] = self.http_proxy
+                self.logger.info(f"Set HTTP_PROXY for LLM: {self.http_proxy}")
+            
+            if self.https_proxy:
+                os.environ['HTTPS_PROXY'] = self.https_proxy
+                os.environ['https_proxy'] = self.https_proxy
+                self.logger.info(f"Set HTTPS_PROXY for LLM: {self.https_proxy}")
+                
+            # Log current proxy environment for debugging
+            self.logger.debug(f"Current proxy environment - HTTP_PROXY: {os.environ.get('HTTP_PROXY')}, HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
+                
+        except Exception as e:
+            self.logger.debug(f"Warning during proxy setup: {e}")
+
+    def unset_proxy_variables(self):
+        """
+        Unset proxy environment variables after LLM call completion.
+        Restore original proxy environment variables.
+        """
+        try:
+            # Skip proxy restoration for Ollama
+            if self.llm_provider == "ollama":
+                self.logger.debug("No proxy variables to restore for Ollama")
+                return
+                
+            # Restore original proxy environment variables
+            if hasattr(self, '_original_http_proxy'):
+                if self._original_http_proxy is not None:
+                    os.environ['HTTP_PROXY'] = self._original_http_proxy
+                elif 'HTTP_PROXY' in os.environ:
+                    del os.environ['HTTP_PROXY']
+                    
+            if hasattr(self, '_original_https_proxy'):
+                if self._original_https_proxy is not None:
+                    os.environ['HTTPS_PROXY'] = self._original_https_proxy
+                elif 'HTTPS_PROXY' in os.environ:
+                    del os.environ['HTTPS_PROXY']
+                    
+            if hasattr(self, '_original_http_proxy_lower'):
+                if self._original_http_proxy_lower is not None:
+                    os.environ['http_proxy'] = self._original_http_proxy_lower
+                elif 'http_proxy' in os.environ:
+                    del os.environ['http_proxy']
+                    
+            if hasattr(self, '_original_https_proxy_lower'):
+                if self._original_https_proxy_lower is not None:
+                    os.environ['https_proxy'] = self._original_https_proxy_lower
+                elif 'https_proxy' in os.environ:
+                    del os.environ['https_proxy']
+                    
+            self.logger.debug("Restored original proxy environment variables")
+        except Exception as e:
+            self.logger.debug(f"Warning during proxy cleanup: {e}")
     
     async def generate_response(self, user_message: str, include_history: bool = True) -> Dict[str, Any]:
         """
-        Generate AI response for a user message in the chat session.
+        Generate AI response using the configured model and MCP tools.
         
         Args:
-            user_message: The user's input message
-            include_history: Whether to include message history in the context
+            user_message: The user's message
+            include_history: Whether to include message history in the conversation
             
         Returns:
-            Dict containing the AI response and metadata
+            Dictionary containing success status, response content, and optional error info
         """
         try:
-            # Configure LLM if not already configured
+            self.logger.info(f"Generating response for message: {user_message[:100]}...")
+            
+            # Add user message to history if including history
+            if include_history:
+                self.message_history.append({"role": "user", "content": user_message})
+            
+            # Configure the LLM model if not already done
             if not self.model:
                 self.configure_llm()
             
-            # Generate session ID if not already set
-            if not self.session_id:
-                self.session_id = f"chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            # Add user message to history
-            user_msg = {"role": "user", "content": user_message}
-            if include_history:
-                self.message_history.append(user_msg)
-            
-            # Prepare messages for the agent (convert to langchain format)
-            if include_history:
-                # Convert history to langchain message format
-                # Ensure system prompt is always first if not already present
-                langchain_messages = []
-                
-                # Check if first message is system prompt, if not add it
-                if not self.message_history or self.message_history[0]["role"] != "system":
-                    from langchain_core.messages import SystemMessage
-                    langchain_messages.append(SystemMessage(content=self.system_prompt))
-                
-                for msg in self.message_history:
-                    if msg["role"] == "system":
-                        from langchain_core.messages import SystemMessage
-                        langchain_messages.append(SystemMessage(content=msg["content"]))
-                    elif msg["role"] == "user":
-                        from langchain_core.messages import HumanMessage
-                        langchain_messages.append(HumanMessage(content=msg["content"]))
-                    elif msg["role"] == "assistant":
-                        from langchain_core.messages import AIMessage
-                        langchain_messages.append(AIMessage(content=msg["content"]))
-            else:
-                from langchain_core.messages import SystemMessage, HumanMessage
-                langchain_messages = [
-                    SystemMessage(content=self.system_prompt),
-                    HumanMessage(content=user_message)
-                ]
-            
-            # Log the structure of messages being sent to the agent
-            self.logger.debug(f"Sending {len(langchain_messages)} messages to agent:")
-            for i, msg in enumerate(langchain_messages[:3]):  # Log first 3 messages
-                msg_type = type(msg).__name__
-                content_preview = getattr(msg, 'content', '')[:100] if hasattr(msg, 'content') else 'No content'
-                self.logger.debug(f"  Message {i}: {msg_type} - {content_preview}...")
-            
-            self.logger.info(f"Processing user query: {user_message}")
-            self.logger.debug(f"Current message history length: {len(self.message_history)}")
-            
-            # Log first few messages for debugging system prompt inclusion
-            if self.message_history:
-                first_msg = self.message_history[0]
-                self.logger.debug(f"First message in history - Role: {first_msg.get('role')}, Content preview: {first_msg.get('content', '')[:100]}...")
-            
-            # Check if we should use agent-specific MCP configurations, legacy approach, or no tools
-            agent_response = None
-            
-            if self.agent_mcp_configs:
-                # New approach: Load tools from multiple agent-specific MCP configurations
-                # Maintain connections throughout agent execution to prevent ClosedResourceError
-                self.logger.info(f"🔧 Using agent-specific MCP configurations: {len(self.agent_mcp_configs)} tool(s) assigned")
-                
-                # Load all tools while maintaining connections and execute agent
-                agent_response = await self.load_agent_specific_tools_with_persistent_connections(langchain_messages)
-                
-                if agent_response:
-                    self.logger.info("✅ Agent invoked successfully with persistent agent-specific tools")
-                else:
-                    self.logger.warning("⚠️ No response from agent-specific configurations - falling back to no-tools mode")
-                    # Ensure model is configured
-                    if not self.model:
-                        raise ValueError("Model not properly initialized")
-                    
-                    # Create REACT agent with no tools (empty list)
-                    agent = create_react_agent(self.model, [])
-                    self.logger.info("🤖 REACT agent created without tools")
-                    
-                    # Run the agent with messages
-                    agent_response = await agent.ainvoke({"messages": langchain_messages})
-                    self.logger.info("✅ Agent invoked successfully without tools")
-                
-            elif self.mcp_server_config:
-                # Legacy approach: Use single MCP server configuration
-                self.logger.info("🔧 Using legacy single MCP server configuration")
-                server_params = self.get_server_params()
-                
-                # Create a single async context that handles both connections
-                async with stdio_client(server_params) as (read, write):  # type: ignore
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        self.logger.info("🔗 Legacy MCP connection initialized")
-                        
-                        # Load MCP tools
-                        tools = await load_mcp_tools(session)
-                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
-                        self.logger.info(f"🛠️ Loaded {len(tools)} legacy tools: {tool_names}")
-                        
-                        # Ensure model is configured
-                        if not self.model:
-                            raise ValueError("Model not properly initialized")
-                        
-                        # Create REACT agent
-                        agent = create_react_agent(self.model, tools)
-                        self.logger.info("🤖 REACT agent created with legacy tools")
-                        
-                        # Run the agent with messages
-                        agent_response = await agent.ainvoke({"messages": langchain_messages})
-                        self.logger.info("✅ Agent invoked successfully with legacy tools")
-            
-            else:
-                # No tools approach: Agent runs without any MCP tools
-                self.logger.info("🔧 No MCP configurations available - agent will run without tools")
-                
-                # Ensure model is configured
-                if not self.model:
-                    raise ValueError("Model not properly initialized")
-                
-                # Create REACT agent with no tools (empty list)
-                agent = create_react_agent(self.model, [])
-                self.logger.info("🤖 REACT agent created without tools")
-                
-                # Run the agent with messages
-                agent_response = await agent.ainvoke({"messages": langchain_messages})
-                self.logger.info("✅ Agent invoked successfully without tools")
-            
-            # Process agent response (same for both approaches)
-            if not agent_response or "messages" not in agent_response:
-                self.logger.error("Invalid agent response")
+            # Ensure model is properly configured before proceeding
+            if not self.model:
+                error_msg = "Model not properly initialized"
+                self.logger.error(error_msg)
                 return {
                     "success": False,
-                    "error": "Invalid agent response",
-                    "session_id": self.session_id
+                    "error": error_msg,
+                    "response": "I'm sorry, but the AI model is not properly configured. Please check the configuration."
                 }
             
-            # Extract AI response from the last message
-            ai_messages = agent_response["messages"]
-            ai_response_content = ""
+            # Prepare messages for LangChain format
+            from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
             
-            # Get the last AI message content
-            for msg in reversed(ai_messages):
-                if hasattr(msg, 'content') and msg.content:
-                    ai_response_content = msg.content
-                    break
+            langchain_messages = []
+            for msg in self.message_history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                
+                if role == "system":
+                    langchain_messages.append(SystemMessage(content=content))
+                elif role == "user":
+                    langchain_messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    langchain_messages.append(AIMessage(content=content))
             
-            # Add AI response to history if using history
-            if include_history:
-                ai_msg = {"role": "assistant", "content": ai_response_content}
-                self.message_history.append(ai_msg)
+            # If not including history, just use the current message
+            if not include_history:
+                langchain_messages = [HumanMessage(content=user_message)]
             
-            self.logger.info("AI response generated successfully")
+            agent_response = None
             
-            return {
-                "success": True,
-                "response": ai_response_content,
-                "session_id": self.session_id,
-                "message_count": len(self.message_history) if include_history else 2,
-                "timestamp": datetime.now().isoformat()
-            }
+            # Try to use MCP tools first if available
+            if self.agent_mcp_configs:
+                self.logger.info("Using agent-specific MCP tools for response generation")
+                agent_response = await self.load_agent_specific_tools_with_persistent_connections(langchain_messages)
+            elif self.mcp_server_config:
+                self.logger.info("Using legacy MCP configuration for response generation")
+                # For legacy single MCP configuration, load tools and create agent
+                try:
+                    tools = await self.load_agent_specific_tools()
+                    if tools and self.model:
+                        # self.set_proxy_variables()
+                        try:
+                            agent = create_react_agent(self.model, tools)
+                            agent_response = await agent.ainvoke({"messages": langchain_messages})
+                        finally:
+                            self.unset_proxy_variables()
+                except Exception as e:
+                    self.logger.warning(f"Failed to use MCP tools, falling back to direct model: {e}")
+            
+            # If agent response was successful, extract content
+            if agent_response and "messages" in agent_response and agent_response["messages"]:
+                response_content = agent_response["messages"][-1].content
+                response_text = str(response_content) if response_content else "No response generated"
+                
+                # Add AI response to history if including history
+                if include_history:
+                    self.message_history.append({"role": "assistant", "content": response_text})
+                
+                return {
+                    "success": True,
+                    "response": response_text,
+                    "used_tools": True
+                }
+            
+            # Fallback to direct model invocation without tools
+            self.logger.info("Using direct model invocation without tools")
+            
+            # Retry logic for connection errors (especially important for corporate networks)
+            max_retries = 3
+            base_delay = 1.0
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    # self.set_proxy_variables()
+                    try:
+                        response = await self.model.ainvoke(langchain_messages)
+                        response_content = response.content
+                        response_text = str(response_content) if response_content else "No response generated"
+                        
+                        # Add AI response to history if including history
+                        if include_history:
+                            self.message_history.append({"role": "assistant", "content": response_text})
+                        
+                        return {
+                            "success": True,
+                            "response": response_text,
+                            "used_tools": False
+                        }
+                    finally:
+                        self.unset_proxy_variables()
+                        
+                except (GroqAPIConnectionError, HttpxConnectError, HttpcoreConnectError, HttpxProxyError, ConnectionError) as conn_err:
+                    last_error = conn_err
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        self.logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {str(conn_err)}. Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        # Final attempt failed, break to handle error below
+                        break
+            
+            # If we reach here, all retries failed or there was a non-connection error
+            if last_error:
+                if isinstance(last_error, (GroqAPIConnectionError, HttpxConnectError, HttpcoreConnectError, HttpxProxyError, ConnectionError)):
+                    # Connection error after all retries
+                    error_msg = f"Connection failed after {max_retries} attempts. This might be due to proxy configuration issues in your corporate network. Please check your proxy settings."
+                    if self.http_proxy or self.https_proxy:
+                        error_msg += f" Current proxy settings - HTTP: {self.http_proxy}, HTTPS: {self.https_proxy}"
+                    else:
+                        error_msg += " No proxy is configured - you may need to set HTTP_PROXY and HTTPS_PROXY environment variables or configure them in the application."
                     
+                    self.logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "response": "Unable to connect to the AI service. Please check your network connection and proxy settings."
+                    }
+                else:
+                    # Other error, re-raise it to be caught by the outer exception handler
+                    raise last_error
+            else:
+                # This should not happen, but just in case
+                error_msg = "Unexpected error: All retry attempts failed without an error being captured"
+                self.logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "response": "I apologize, but I encountered an unexpected error while processing your request. Please try again."
+                }
+                        
         except Exception as e:
-            self.logger.error(f"Error generating response: {str(e)}", exc_info=True)
+            # Handle any other unexpected errors
+            error_msg = f"Error generating AI response: {str(e)}"
+            self.logger.error(error_msg)
+            
+            # Check if it's a connection-related error and provide helpful message
+            if any(err_type in str(e).lower() for err_type in ['connection', 'proxy', 'network', 'timeout']):
+                helpful_msg = "This appears to be a network connectivity issue. If you're in a corporate network, please ensure your proxy settings are correctly configured."
+                return {
+                    "success": False,
+                    "error": f"{error_msg}. {helpful_msg}",
+                    "response": "I apologize, but I'm having trouble connecting to the AI service. Please check your network connection and try again."
+                }
+            
             return {
                 "success": False,
-                "error": str(e),
-                "session_id": self.session_id or "unknown"
+                "error": error_msg,
+                "response": "I apologize, but I encountered an error while processing your request. Please try again."
             }
-    
-    def get_message_history(self) -> List[Dict[str, Any]]:
-        """
-        Get the current message history for the session.
-        
-        Returns:
-            List of message dictionaries
-        """
-        return self.message_history.copy()
-    
-    def clear_history(self) -> None:
-        """Clear the message history but keep the system prompt."""
-        self.message_history = [
-            {"role": "system", "content": self.system_prompt}
-        ]
-        self.logger.info("Message history cleared, system prompt retained")
-    
-    def get_available_mcp_functions(self) -> List[Dict[str, str]]:
-        """
-        Get list of available MCP functions using the test utility.
-        
-        Returns:
-            List of function dictionaries with 'name', 'description', and 'type' keys
-        """
-        try:
-            test_result = self.test_mcp_configuration_sync()
-            if test_result["success"] and test_result["functions"]:
-                return test_result["functions"]
-            else:
-                self.logger.warning(f"Failed to get MCP functions: {test_result.get('error_message', 'Unknown error')}")
-                return []
-        except Exception as e:
-            self.logger.error(f"Error getting MCP functions: {str(e)}")
-            return []
 
-    def get_session_info(self) -> Dict[str, Any]:
+    def _test_huggingface_proxy_connection(self, proxy_url: str) -> bool:
         """
-        Get information about the current session, including MCP function count from test utility.
-        
-        Returns:
-            Dict containing session information
-        """
-        # Get MCP function count using test utility
-        mcp_function_count = 0
-        try:
-            test_result = self.test_mcp_configuration_sync()
-            if test_result["success"]:
-                mcp_function_count = test_result["function_count"]
-        except Exception as e:
-            self.logger.warning(f"Could not get MCP function count: {str(e)}")
-        
-        return {
-            "session_id": self.session_id,
-            "llm_provider": self.llm_provider,
-            "model_name": self.model_name,
-            "message_count": len(self.message_history),
-            "tools_count": len(self.tools) if self.tools else 0,
-            "mcp_function_count": mcp_function_count,
-            "created_at": self.session_id.split('_')[-2] + '_' + self.session_id.split('_')[-1] if self.session_id else None
-        }
-    
-    def update_system_prompt(self, new_system_prompt: str) -> None:
-        """
-        Update the system prompt and refresh the message history.
+        Test if HuggingFace can connect through the proxy.
         
         Args:
-            new_system_prompt: The new system prompt to use
+            proxy_url: Proxy URL to test
+            
+        Returns:
+            bool: True if connection successful, False otherwise
         """
-        self.system_prompt = new_system_prompt
-        
-        # Update the system prompt in message history
-        if self.message_history and self.message_history[0]["role"] == "system":
-            self.message_history[0]["content"] = new_system_prompt
-        else:
-            # Insert system prompt at the beginning if not present
-            self.message_history.insert(0, {"role": "system", "content": new_system_prompt})
-        
-        self.logger.info("System prompt updated successfully")
+        try:
+            import requests
+            import time
+            
+            # Test connection to HuggingFace hub with proxy
+            proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            
+            response = requests.get(
+                'https://huggingface.co',
+                proxies=proxies,
+                timeout=10,
+                headers={'User-Agent': 'viki-ai-test'}
+            )
+            
+            if response.status_code == 200:
+                self.logger.info("HuggingFace proxy test successful")
+                return True
+            else:
+                self.logger.warning(f"HuggingFace proxy test failed with status: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.logger.warning(f"HuggingFace proxy test failed: {e}")
+            return False
 
+    def _suggest_huggingface_alternatives(self):
+        """Suggest alternatives when HuggingFace proxy fails."""
+        self.logger.error("=" * 60)
+        self.logger.error("HuggingFace Proxy Configuration Failed")
+        self.logger.error("=" * 60)
+        self.logger.error("HuggingFace has known issues with proxy configurations.")
+        self.logger.error("RECOMMENDED ALTERNATIVES:")
+        self.logger.error("1. Use OpenAI (excellent proxy support)")
+        self.logger.error("2. Use Groq (excellent proxy support)")
+        self.logger.error("3. Use Anthropic (excellent proxy support)")
+        self.logger.error("4. Use Cerebras (good proxy support)")
+        self.logger.error("5. Set proxy at OS level: export HTTP_PROXY=http://proxy:8080")
+        self.logger.error("6. Use direct model endpoints instead of HuggingFace Hub")
+        self.logger.error("=" * 60)
 # ============================================================================
 # USAGE EXAMPLE AND CONVENIENCE FUNCTIONS
 # ============================================================================
-
-async def create_chat_session(llm_provider: str = "ollama", 
-                             model_name: str = "qwen3:32b",
-                             mcp_server_config: Optional[Dict[str, Any]] = None,
-                             validate_mcp: bool = True,
-                             **kwargs) -> AIChatUtility:
-    """
-    Convenience function to create and initialize a chat session.
-    
-    Args:
-        llm_provider: The LLM provider to use
-        model_name: The model name to use
-        mcp_server_config: Optional MCP server configuration
-        validate_mcp: Whether to validate MCP configuration before initialization
-        **kwargs: Additional parameters for AIChatUtility
-        
-    Returns:
-        Initialized AIChatUtility instance
-    """
-    chat_util = AIChatUtility(
-        llm_provider=llm_provider,
-        model_name=model_name,
-        mcp_server_config=mcp_server_config,
-        **kwargs
-    )
-    await chat_util.initialize_session(validate_mcp=validate_mcp)
-    return chat_util
-
-
-async def quick_chat(message: str, 
-                    llm_provider: str = "ollama",
-                    model_name: str = "qwen3:32b",
-                    mcp_server_config: Optional[Dict[str, Any]] = None,
-                    **kwargs) -> str:
-    """
-    Convenience function for a quick one-off chat interaction.
-    
-    Args:
-        message: The message to send
-        llm_provider: The LLM provider to use
-        model_name: The model name to use
-        mcp_server_config: Optional MCP server configuration
-        **kwargs: Additional parameters for AIChatUtility
-        
-    Returns:
-        AI response string
-    """
-    chat_util = AIChatUtility(
-        llm_provider=llm_provider,
-        model_name=model_name,
-        mcp_server_config=mcp_server_config,
-        **kwargs
-    )
-    
-    response = await chat_util.generate_response(message, include_history=False)
-    
-    if response["success"]:
-        return response["response"]
-    else:
-        return f"Error: {response['error']}"

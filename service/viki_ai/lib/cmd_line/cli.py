@@ -15,7 +15,7 @@ def load_environment_variables(logger, env_path: str = None): # type: ignore
         env_path (str): Path to the .env file
     
     Returns:
-        None
+        tuple: (DB_URL, DEBUG, FLYWAY_LOCATION, HTTP_PROXY, HTTPS_PROXY, NO_PROXY, logger)
     """
     
     try:
@@ -54,11 +54,21 @@ def load_environment_variables(logger, env_path: str = None): # type: ignore
         DB_URL = os.getenv("DB_URL", "sqlite:///:memory:")
         logger.debug("DB_URL: %s", DB_URL)
 
+        # Loading proxy environment variables
+        # NOTE: Proxy settings are loaded as config values but NOT set globally
+        HTTP_PROXY = os.getenv("HTTPPROXY", "")
+        HTTPS_PROXY = os.getenv("HTTPSPROXY", "")
+        NO_PROXY = os.getenv("NOPROXY", "")
+        
+        logger.info("HTTPPROXY (for LLM use only): %s", HTTP_PROXY if HTTP_PROXY else "Not set")
+        logger.info("HTTPSPROXY (for LLM use only): %s", HTTPS_PROXY if HTTPS_PROXY else "Not set")
+        logger.info("NOPROXY (available for use): %s", NO_PROXY if NO_PROXY else "Not set")
+
         # Update Flyway location if needed
         DEFAULT_CLASSPATH = os.path.join(os.getcwd(), "db", "flyway")
         FLYWAY_LOCATION = os.getenv("FLYWAY_LOCATION", DEFAULT_CLASSPATH)
 
-        return DB_URL, DEBUG, FLYWAY_LOCATION ,logger
+        return DB_URL, DEBUG, FLYWAY_LOCATION, HTTP_PROXY, HTTPS_PROXY, NO_PROXY, logger
     
     except Exception as e:
         logger.error(f"Error loading environment variables: {str(e)}")

@@ -22,6 +22,9 @@ def main():
     - DEBUG: Enable debug logging (optional default is False)
     - DB_URL: Database connection URL (optional default is in-memory SQLite)
     - FLYWAY_LOCATION: Location of Flyway migrations (optional default is "classpath:db/flayway")
+    - HTTPPROXY: HTTP proxy server URL for LLM calls only (optional)
+    - HTTPSPROXY: HTTPS proxy server URL for LLM calls only (optional)
+    - NOPROXY: Comma-separated list of hosts that should bypass proxy (loaded globally)
     - PORT: Port number (optional default is 8080)
     """
 
@@ -29,6 +32,9 @@ def main():
     DEBUG = True
     DB_URL = ""
     FLYWAY_LOCATION = ""
+    HTTP_PROXY = ""
+    HTTPS_PROXY = ""
+    NO_PROXY = ""
     PORT = 8080
 
     logger = setup_logging(DEBUG)
@@ -37,7 +43,7 @@ def main():
     try:
         
         # Load environment variables
-        DB_URL, DEBUG, FLYWAY_LOCATION, logger = load_environment_variables(logger)
+        DB_URL, DEBUG, FLYWAY_LOCATION, HTTP_PROXY, HTTPS_PROXY, NO_PROXY, logger = load_environment_variables(logger)
 
         # Connect to the database
         DB_ENGINE = create_db_engine(DB_URL)
