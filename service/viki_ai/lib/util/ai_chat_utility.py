@@ -43,9 +43,6 @@ from langgraph.prebuilt import create_react_agent
 # Import MCP test utility
 from .mcp_test_util import test_mcp_configuration, test_mcp_configuration_sync
 
-# Import LLM-specific proxy configuration
-from .proxy_config import get_llm_proxy_env_vars
-
 # Suppress SQLAlchemy warnings about Phoenix's expression-based indices globally
 # These warnings are harmless and occur during Phoenix initialization
 try:
@@ -154,8 +151,8 @@ class AIChatUtility:
     """
     
     def __init__(self, 
-                 llm_provider: str = "ollama",
-                 model_name: str = "qwen3:32b",
+                 llm_provider: str,
+                 model_name: str,
                  config_file_content: Any= None,
                  api_key: Optional[str] = None,
                  base_url: Optional[str] = None,
@@ -164,7 +161,8 @@ class AIChatUtility:
                  mcp_server_config: Optional[Dict[str, Any]] = None,
                  agent_mcp_configs: Optional[List[Dict[str, Any]]] = None,
                  http_proxy: Optional[str] = None,
-                 https_proxy: Optional[str] = None):
+                 https_proxy: Optional[str] = None,
+                 no_proxy: Optional[str] = None):
         """
         Initialize the AI Chat Utility.
         
@@ -179,6 +177,7 @@ class AIChatUtility:
             agent_mcp_configs: List of agent-specific MCP configurations for individual tools
             http_proxy: HTTP proxy URL for LLM calls only (not global)
             https_proxy: HTTPS proxy URL for LLM calls only (not global)
+            no_proxy: Comma-separated list of domains to exclude from proxying (not global)
         """
         self.llm_provider = llm_provider.lower()
         self.model_name = model_name
@@ -190,6 +189,7 @@ class AIChatUtility:
         # Store LLM-specific proxy settings (not global)
         self.http_proxy = http_proxy
         self.https_proxy = https_proxy
+        self.no_proxy = no_proxy
         
         # Setup logging first
         self.logger = logging.getLogger(__name__)
@@ -239,6 +239,36 @@ class AIChatUtility:
             self.logger.info("Phoenix instrumentation active for AIChatUtility")
         else:
             self.logger.warning("Phoenix instrumentation not available")
+    
+    def configure_proxy(self):
+        if self.http_proxy:
+            os.environ["HTTP_PROXY"] = self.http_proxy
+            os.environ["http_proxy"] = self.http_proxy
+        if self.https_proxy:
+            os.environ["HTTPS_PROXY"] = self.https_proxy
+            os.environ["https_proxy"] = self.https_proxy
+        if self.no_proxy:
+            os.environ["NO_PROXY"] = self.no_proxy
+            os.environ["no_proxy"] = self.no_proxy
+    
+    def remove_proxy(self):
+        """
+        Remove proxy settings from environment variables.
+        This is useful to reset the environment after LLM configuration.
+        """
+        if "HTTP_PROXY" in os.environ:
+            del os.environ["HTTP_PROXY"]
+        if "http_proxy" in os.environ:
+            del os.environ["http_proxy"]
+        if "HTTPS_PROXY" in os.environ:
+            del os.environ["HTTPS_PROXY"]
+        if "https_proxy" in os.environ:
+            del os.environ["https_proxy"]
+        if "NO_PROXY" in os.environ:
+            del os.environ["NO_PROXY"]
+        if "no_proxy" in os.environ:
+            del os.environ["no_proxy"]
+    
     def configure_llm(self) -> Any:
         """
         Configure and return the LLM model based on the provider.
@@ -254,104 +284,62 @@ class AIChatUtility:
         try:
                 
             if self.llm_provider == "ollama":
+
+                if not self.model_name:
+                    raise ValueError("Model name is required for Ollama")
+
+                self.remove_proxy()         
+
                 self.model = ChatOllama(
                     model=self.model_name,
                     temperature=self.temperature
                 )
+
+                self.configure_proxy()
                 
             elif self.llm_provider == "openai":
                 if not self.api_key:
                     raise ValueError("API key is required for OpenAI")
-                
-                # Configure OpenAI with proxy settings for corporate networks
-                openai_kwargs = {
-                    "model": self.model_name,
-                    "api_key": SecretStr(self.api_key),
-                    "temperature": self.temperature
-                }
-                
-                # Add HTTP client configuration for proxy support
-                if self.http_proxy or self.https_proxy:
-                    import httpx
-                    
-                    # Create proxy configuration for httpx
-                    proxy_url = self.https_proxy or self.http_proxy
-                    
-                    # Create httpx client with proxy settings
-                    http_client = httpx.Client(proxy=proxy_url)
-                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
-                    
-                    openai_kwargs["http_client"] = http_client
-                    openai_kwargs["http_async_client"] = async_http_client
-                    
-                    self.logger.info(f"Configured OpenAI with proxy: {proxy_url}")
-                
-                self.model = ChatOpenAI(**openai_kwargs)
+                if not self.model_name:
+                    raise ValueError("Model name is required for OpenAI")
+
+                self.model = ChatOpenAI(
+                    model=self.model_name,
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature
+                )
                 
             elif self.llm_provider == "groq":
                 if not self.api_key:
                     raise ValueError("API key is required for Groq")
+                if not self.model_name:
+                    raise ValueError("Model name is required for Groq")
                 
-                # Configure Groq with proxy settings for corporate networks
-                groq_kwargs = {
-                    "model": self.model_name,
-                    "api_key": SecretStr(self.api_key),
-                    "temperature": self.temperature
-                }
-                
-                # Add HTTP client configuration for proxy support
-                if self.http_proxy or self.https_proxy:
-                    import httpx
-                    
-                    # Create proxy configuration for httpx
-                    proxy_url = self.https_proxy or self.http_proxy
-                    
-                    # Create httpx client with proxy settings
-                    http_client = httpx.Client(proxy=proxy_url)
-                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
-                    
-                    groq_kwargs["http_client"] = http_client
-                    groq_kwargs["http_async_client"] = async_http_client
-                    
-                    self.logger.info(f"Configured Groq with proxy: {proxy_url}")
-                
-                self.model = ChatGroq(**groq_kwargs)
-                
+                self.configure_proxy()
+
+                self.model = ChatGroq(
+                    model=self.model_name,
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature
+                )
+
+                self.remove_proxy()
+
             elif self.llm_provider == "azure":
                 if not self.api_key:
                     raise ValueError("API key is required for Azure AI")
                 
                 os.environ["AZURE_INFERENCE_CREDENTIAL"] = self.api_key
                 
-                # Configure proxy via temporary environment variables for Azure AI
-                # Store original values to restore later
-                original_http_proxy = os.environ.get("HTTP_PROXY")
-                original_https_proxy = os.environ.get("HTTPS_PROXY")
-                
-                try:
-                    if self.http_proxy or self.https_proxy:
-                        proxy_url = self.https_proxy or self.http_proxy
-                        if proxy_url:
-                            os.environ["HTTP_PROXY"] = proxy_url
-                            os.environ["HTTPS_PROXY"] = proxy_url
-                            self.logger.info(f"Temporarily configured Azure with proxy via environment variables: {proxy_url}")
+                self.configure_proxy()
 
-                    self.model = AzureAIChatCompletionsModel(
-                        model=self.model_name,
-                        endpoint=self.base_url or "https://models.github.ai/inference"
-                    )
+                self.model = AzureAIChatCompletionsModel(
+                    model=self.model_name,
+                    endpoint=self.base_url or "https://models.github.ai/inference"
+                )
+
+                self.remove_proxy()
                     
-                finally:
-                    # Restore original environment variables
-                    if original_http_proxy is not None:
-                        os.environ["HTTP_PROXY"] = original_http_proxy
-                    elif "HTTP_PROXY" in os.environ:
-                        del os.environ["HTTP_PROXY"]
-                        
-                    if original_https_proxy is not None:
-                        os.environ["HTTPS_PROXY"] = original_https_proxy
-                    elif "HTTPS_PROXY" in os.environ:
-                        del os.environ["HTTPS_PROXY"]
 
             elif self.llm_provider == "huggingface":
                 if not self.api_key:
@@ -359,83 +347,17 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for HuggingFace")
 
-                # HuggingFace has notorious proxy issues. Try multiple approaches.
-                if self.http_proxy or self.https_proxy:
-                    proxy_url = self.https_proxy or self.http_proxy
-                    if proxy_url:
-                        self.logger.warning(f"Attempting HuggingFace proxy configuration with: {proxy_url}")
-                        self.logger.warning("Note: HuggingFace has known proxy compatibility issues")
+                self.configure_proxy()
+
+                # Create HuggingFace endpoint with additional timeout
+                llm = HuggingFaceEndpoint(
+                    huggingfacehub_api_token=self.api_key,
+                    repo_id=self.model_name,
+                    task="text-generation"
+                )  # type: ignore
+                self.model = ChatHuggingFace(llm=llm)
                         
-                        # Store original environment to restore later if needed
-                        original_env = {
-                            'HTTP_PROXY': os.environ.get('HTTP_PROXY'),
-                            'HTTPS_PROXY': os.environ.get('HTTPS_PROXY'),
-                            'http_proxy': os.environ.get('http_proxy'),
-                            'https_proxy': os.environ.get('https_proxy'),
-                        }
-                        
-                        try:
-                            # Test proxy connection first
-                            if not self._test_huggingface_proxy_connection(proxy_url):
-                                self.logger.warning("HuggingFace proxy test failed, but attempting to continue...")
-                            
-                            # Set all possible proxy environment variables
-                            os.environ["HTTP_PROXY"] = proxy_url
-                            os.environ["HTTPS_PROXY"] = proxy_url
-                            os.environ["http_proxy"] = proxy_url
-                            os.environ["https_proxy"] = proxy_url
-                            
-                            # Try to monkey-patch aiohttp ClientSession to force proxy usage
-                            try:
-                                import aiohttp
-                                from functools import partial
-                                
-                                # Store original ClientSession init
-                                original_init = aiohttp.ClientSession.__init__
-                                
-                                def patched_init(self, *args, trust_env=True, **kwargs):
-                                    # Force trust_env=True to read proxy from environment
-                                    return original_init(self, *args, trust_env=True, **kwargs)
-                                
-                                # Apply the patch
-                                aiohttp.ClientSession.__init__ = patched_init
-                                
-                                self.logger.debug("Applied aiohttp proxy patch")
-                                
-                            except Exception as e:
-                                self.logger.debug(f"Could not patch aiohttp: {e}")
-                            
-                            # Create HuggingFace endpoint with additional timeout
-                            llm = HuggingFaceEndpoint(
-                                huggingfacehub_api_token=self.api_key,
-                                repo_id=self.model_name,
-                                task="text-generation"
-                            )  # type: ignore
-                            self.model = ChatHuggingFace(llm=llm)
-                            
-                            self.logger.info("HuggingFace model created with proxy configuration")
-                            
-                        except Exception as e:
-                            self.logger.error(f"HuggingFace proxy configuration failed: {e}")
-                            # Restore original environment
-                            for key, value in original_env.items():
-                                if value is not None:
-                                    os.environ[key] = value
-                                elif key in os.environ:
-                                    del os.environ[key]
-                            
-                            # Provide helpful alternatives
-                            self._suggest_huggingface_alternatives()
-                            raise ValueError(f"HuggingFace proxy setup failed: {e}")
-                        
-                else:
-                    # No proxy configuration needed
-                    llm = HuggingFaceEndpoint(
-                        huggingfacehub_api_token=self.api_key,
-                        repo_id=self.model_name,
-                        task="text-generation"
-                    )  # type: ignore
-                    self.model = ChatHuggingFace(llm=llm)
+                self.remove_proxy()
 
             elif self.llm_provider == "cerebras":
                 if not self.api_key:
@@ -443,30 +365,13 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for Cerebras")
 
-                # Configure Cerebras with proxy settings for corporate networks
-                cerebras_kwargs = {
-                    "model": self.model_name,
-                    "api_key": SecretStr(self.api_key),
-                    "temperature": self.temperature
-                }
-                
-                # Add HTTP client configuration for proxy support
-                if self.http_proxy or self.https_proxy:
-                    import httpx
-                    
-                    # Create proxy configuration for httpx
-                    proxy_url = self.https_proxy or self.http_proxy
-                    
-                    # Create httpx client with proxy settings
-                    http_client = httpx.Client(proxy=proxy_url)
-                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
-                    
-                    cerebras_kwargs["http_client"] = http_client
-                    cerebras_kwargs["http_async_client"] = async_http_client
-                    
-                    self.logger.info(f"Configured Cerebras with proxy: {proxy_url}")
+                self.configure_proxy()
 
-                self.model = ChatCerebras(**cerebras_kwargs)
+                self.model = ChatCerebras( model=self.model_name,
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature)
+                
+                self.remove_proxy()
 
             elif self.llm_provider == "openrouter":
                 if not self.api_key:
@@ -474,32 +379,16 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for OpenRouter")
             
-                # Configure OpenRouter with proxy settings for corporate networks
-                openrouter_kwargs = {
-                    "model": self.model_name,
-                    "api_key": SecretStr(self.api_key),
-                    "temperature": self.temperature,
-                    "base_url": "https://openrouter.ai/api/v1"
-                }
-                
-                # Add HTTP client configuration for proxy support
-                if self.http_proxy or self.https_proxy:
-                    import httpx
-                    
-                    # Create proxy configuration for httpx
-                    proxy_url = self.https_proxy or self.http_proxy
-                    
-                    # Create httpx client with proxy settings
-                    http_client = httpx.Client(proxy=proxy_url)
-                    async_http_client = httpx.AsyncClient(proxy=proxy_url)
-                    
-                    openrouter_kwargs["http_client"] = http_client
-                    openrouter_kwargs["http_async_client"] = async_http_client
-                    
-                    self.logger.info(f"Configured OpenRouter with proxy: {proxy_url}")
+                self.configure_proxy()
 
                 # Custom OpenRouter implementation
-                self.model = ChatOpenAI(**openrouter_kwargs)
+                self.model = ChatOpenAI(
+                    model=self.model_name,
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature,
+                    base_url="https://openrouter.ai/api/v1")
+                
+                self.remove_proxy()
 
             elif self.llm_provider == "anthropic":
                 if not self.api_key:
@@ -507,37 +396,16 @@ class AIChatUtility:
                 if not self.model_name:
                     raise ValueError("Model name is required for Anthropic")
 
-                # Configure Anthropic with proxy settings for corporate networks
-                # Anthropic doesn't support direct HTTP client configuration like OpenAI/Groq
-                # We need to use environment variables approach
-                original_http_proxy = self.http_proxy
-                original_https_proxy = self.https_proxy
-                
-                try:
-                    if self.http_proxy or self.https_proxy:
-                        proxy_url = self.https_proxy or self.http_proxy
-                        if proxy_url:
-                            os.environ["HTTP_PROXY"] = proxy_url
-                            os.environ["HTTPS_PROXY"] = proxy_url
-                            self.logger.info(f"Temporarily configured Anthropic with proxy via environment variables: {proxy_url}")
+                self.configure_proxy()
 
-                    self.model = ChatAnthropic(
-                        model=self.model_name,  # type: ignore
-                        api_key=SecretStr(self.api_key),
-                        temperature=self.temperature
-                    )
+                self.model = ChatAnthropic(
+                    model=self.model_name,  # type: ignore
+                    api_key=SecretStr(self.api_key),
+                    temperature=self.temperature
+                )
+
+                self.remove_proxy()
                     
-                finally:
-                    # Restore original environment variables
-                    if original_http_proxy is not None:
-                        os.environ["HTTP_PROXY"] = original_http_proxy
-                    elif "HTTP_PROXY" in os.environ:
-                        del os.environ["HTTP_PROXY"]
-                        
-                    if original_https_proxy is not None:
-                        os.environ["HTTPS_PROXY"] = original_https_proxy
-                    elif "HTTPS_PROXY" in os.environ:
-                        del os.environ["HTTPS_PROXY"]
 
             elif self.llm_provider == "aws":
                 if not self.model_name:
@@ -582,39 +450,18 @@ class AIChatUtility:
                         f"Please ensure your configuration file contains: access_key, secret_key, and region."
                     )
                 
-                # Configure proxy via temporary environment variables for AWS Bedrock
-                # Store original values to restore later
-                original_http_proxy = os.environ.get("HTTP_PROXY")
-                original_https_proxy = os.environ.get("HTTPS_PROXY")
+                self.configure_proxy()
                 
-                try:
-                    if self.http_proxy or self.https_proxy:
-                        proxy_url = self.https_proxy or self.http_proxy
-                        if proxy_url:
-                            os.environ["HTTP_PROXY"] = proxy_url
-                            os.environ["HTTPS_PROXY"] = proxy_url
-                            self.logger.info(f"Temporarily configured AWS Bedrock with proxy via environment variables: {proxy_url}")
-                
-                    # Configure AWS credentials
-                    self.model = ChatBedrock(
-                        model=self.model_name,
-                        aws_access_key_id=aws_access_key,
-                        aws_secret_access_key=aws_secret_key,
-                        region=aws_region,
-                        temperature=self.temperature
-                    )
-                    
-                finally:
-                    # Restore original environment variables
-                    if original_http_proxy is not None:
-                        os.environ["HTTP_PROXY"] = original_http_proxy
-                    elif "HTTP_PROXY" in os.environ:
-                        del os.environ["HTTP_PROXY"]
-                        
-                    if original_https_proxy is not None:
-                        os.environ["HTTPS_PROXY"] = original_https_proxy
-                    elif "HTTPS_PROXY" in os.environ:
-                        del os.environ["HTTPS_PROXY"]
+                # Configure AWS credentials
+                self.model = ChatBedrock(
+                    model=self.model_name,
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region=aws_region,
+                    temperature=self.temperature
+                )
+
+                self.remove_proxy()
 
             else:
                 raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
@@ -671,10 +518,22 @@ class AIChatUtility:
         
         # Add LLM-specific proxy environment variables if they are configured
         if self.http_proxy or self.https_proxy:
-            llm_proxy_env = get_llm_proxy_env_vars(
-                http_proxy=self.http_proxy or "",
-                https_proxy=self.https_proxy or ""
-            )
+            llm_proxy_env = {}
+            
+            if self.http_proxy:
+                llm_proxy_env['HTTP_PROXY'] = self.http_proxy
+                llm_proxy_env['http_proxy'] = self.http_proxy
+                
+            if self.https_proxy:
+                llm_proxy_env['HTTPS_PROXY'] = self.https_proxy
+                llm_proxy_env['https_proxy'] = self.https_proxy
+            
+            # Always include the global NO_PROXY setting if it exists
+            no_proxy = os.environ.get('NO_PROXY') or os.environ.get('no_proxy', '')
+            if no_proxy:
+                llm_proxy_env['NO_PROXY'] = no_proxy
+                llm_proxy_env['no_proxy'] = no_proxy
+            
             env.update(llm_proxy_env)
             self.logger.debug(f"Added LLM proxy environment variables for MCP server: {llm_proxy_env}")
         
@@ -842,9 +701,12 @@ class AIChatUtility:
                 self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
                 
                 # Create MCP connection for this tool
-                async with self._managed_mcp_session(server_params, tool_name) as session:
-                    # Load MCP tools for this specific configuration
-                    tools = await load_mcp_tools(session)
+                async with stdio_client(server_params) as (read, write):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        
+                        # Load MCP tools for this specific configuration
+                        tools = await load_mcp_tools(session)
                     all_tools.extend(tools)
                     
                     tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
@@ -887,303 +749,6 @@ class AIChatUtility:
         
         return all_tools
 
-    async def load_agent_specific_tools_with_persistent_connections(self, langchain_messages) -> Optional[Dict[str, Any]]:
-        """
-        Load MCP tools from agent-specific configurations and execute agent with persistent connections.
-        This method maintains MCP connections throughout the entire agent execution to prevent ClosedResourceError.
-        
-        Args:
-            langchain_messages: The messages to pass to the agent
-            
-        Returns:
-            Agent response dict or None if no tools could be loaded
-        """
-        if not self.agent_mcp_configs:
-            self.logger.info("No agent-specific MCP configurations available")
-            return None
-        
-        # For agent-specific configurations, we need to create multiple connection contexts
-        # and maintain them throughout the agent execution
-        self.logger.info(f"Creating persistent connections for {len(self.agent_mcp_configs)} MCP configurations")
-        
-        # We'll maintain all connections in a list of context managers
-        connection_contexts = []
-        all_tools = []
-        
-        try:
-            # Create all connection contexts
-            for i, config in enumerate(self.agent_mcp_configs, 1):
-                tool_name = config.get("tool_name", "Unknown")
-                tool_id = config.get("tool_id", "unknown")
-                
-                try:
-                    self.logger.info(f"[{i}/{len(self.agent_mcp_configs)}] Creating persistent connection for '{tool_name}' (ID: {tool_id})")
-                    
-                    # Create server parameters for this specific tool
-                    server_params = self.get_server_params(config)
-                    self.logger.debug(f"Created server params for {tool_name}: command={server_params.command}, args={server_params.args}")
-                    
-                    # Store connection context info for later use
-                    connection_contexts.append({
-                        'tool_name': tool_name,
-                        'tool_id': tool_id,
-                        'server_params': server_params,
-                        'config': config
-                    })
-                    
-                except Exception as e:
-                    error_msg = f"Error creating connection context for '{tool_name}' (ID: {tool_id}): {str(e)}"
-                    self.logger.error(f"❌ {error_msg}")
-                    continue
-            
-            if not connection_contexts:
-                self.logger.warning("No valid connection contexts created")
-                return None
-            
-            # Create nested async context managers for all connections
-            # This is the key fix: maintain all connections throughout agent execution
-            async def create_nested_connections(contexts, index=0):
-                if index >= len(contexts):
-                    # Base case: all connections established, load tools and run agent
-                    self.logger.info(f"All {len(contexts)} MCP connections established")
-                    
-                    # Ensure model is configured
-                    if not self.model:
-                        raise ValueError("Model not properly initialized")
-                    
-                    if not all_tools:
-                        self.logger.warning("No tools loaded from any connection")
-                        return None
-                    
-                    tool_names = [getattr(tool, 'name', 'Unknown') for tool in all_tools]
-                    self.logger.info(f"🛠️ Agent loaded with {len(all_tools)} tools: {tool_names}")
-                    
-                    # Create REACT agent with all tools
-                    agent = create_react_agent(self.model, all_tools)
-                    self.logger.info("🤖 REACT agent created with persistent connection tools")
-                    
-                    # Run the agent with messages while connections are maintained
-                    try:
-                        # Set proxy variables before LLM call
-                        # self.set_proxy_variables()
-                        
-                        agent_response = await agent.ainvoke({"messages": langchain_messages})
-                        self.logger.info("✅ Agent executed successfully with persistent connections")
-                    except (GroqBadRequestError, Exception) as e:
-                        # Handle specific tool call errors
-                        error_str = str(e)
-                        if ("BadRequestError" in error_str and "tool_use_failed" in error_str) or \
-                           ("Failed to call a function" in error_str) or \
-                           isinstance(e, GroqBadRequestError):
-                            
-                            # Check if this is a get_column_details error with missing schema
-                            if "get_column_details" in error_str and "table_name" in error_str:
-                                self.logger.error(f"❌ get_column_details called with missing schema parameter: {error_str}")
-                                from langchain_core.messages import AIMessage
-                                error_message = (
-                                    "I tried to get column details for a table, but the function requires both "
-                                    "a table name AND a schema. For OFSLL database tables, the schema is typically 'public'. "
-                                    "Could you please specify what specific information you're looking for? For example:\n\n"
-                                    "- 'Show me the structure of the ACCOUNTS table'\n"
-                                    "- 'What columns are in the CUSTOMERS table?'\n"
-                                    "- 'Get details for a specific account number'\n\n"
-                                    "I'll make sure to include the proper schema when calling the function."
-                                )
-                            else:
-                                self.logger.error(f"❌ Tool call failed - likely missing required parameters: {error_str}")
-                                from langchain_core.messages import AIMessage
-                                error_message = (
-                                    "I encountered an error when trying to use a tool. It seems like the tool requires "
-                                    "specific parameters that weren't provided correctly. Could you please provide more specific "
-                                    "information about what you're looking for? For example:\n\n"
-                                    "- If you want account details, please provide the account number\n"
-                                    "- If you want column details, please specify the table name\n"
-                                    "- If you want to make a payment, please provide the payment details\n\n"
-                                    f"Technical error: Tool call failed with incomplete arguments"
-                                )
-                            return {"messages": [AIMessage(content=error_message)]}
-                        else:
-                            # Re-raise other errors
-                            raise
-                    finally:
-                        # Unset proxy variables after LLM call completion
-                        self.unset_proxy_variables()
-                    
-                    return agent_response
-                
-                # Recursive case: establish connection for current context
-                ctx = contexts[index]
-                try:
-                    async with self._managed_mcp_session(ctx['server_params'], ctx['tool_name']) as session:
-                        # Load tools for this connection
-                        tools = await load_mcp_tools(session)
-                        all_tools.extend(tools)
-                        
-                        tool_names = [getattr(tool, 'name', 'Unknown') for tool in tools]
-                        self.logger.info(f"✓ Loaded {len(tools)} tools from '{ctx['tool_name']}': {tool_names}")
-                        
-                        # Recursively establish remaining connections
-                        return await create_nested_connections(contexts, index + 1)
-                            
-                except Exception as e:
-                    error_msg = f"Error in persistent connection for '{ctx['tool_name']}': {str(e)}"
-                    self.logger.error(f"❌ {error_msg}")
-                    # Continue with remaining connections
-                    return await create_nested_connections(contexts, index + 1)
-            
-            # Execute with nested connections
-            agent_response = await create_nested_connections(connection_contexts)
-            return agent_response
-            
-        except Exception as e:
-            self.logger.error(f"Error in persistent connection management: {str(e)}")
-            return None
-
-    async def _create_mcp_connection_with_retry(self, server_params: StdioServerParameters, tool_name: str = "unknown"):
-        """
-        Create MCP connection with retry logic and resource management.
-        
-        Args:
-            server_params: MCP server parameters
-            tool_name: Name of the tool for logging
-            
-        Returns:
-            Context manager for stdio_client
-            
-        Raises:
-            Exception: If all retry attempts fail
-        """
-        async with self._connection_semaphore:  # Limit concurrent connections
-            for attempt in range(self._max_retries):
-                try:
-                    # Add small delay before each attempt (exponential backoff)
-                    if attempt > 0:
-                        delay = self._base_delay * (2 ** (attempt - 1))
-                        self.logger.info(f"Retrying MCP connection for {tool_name} in {delay:.2f}s (attempt {attempt + 1}/{self._max_retries})")
-                        await asyncio.sleep(delay)
-                    
-                    # Return the connection context manager
-                    return stdio_client(server_params)
-                    
-                except Exception as e:
-                    self.logger.warning(f"MCP connection attempt {attempt + 1} failed for {tool_name}: {str(e)}")
-                    if attempt == self._max_retries - 1:
-                        # Last attempt failed
-                        self.logger.error(f"All {self._max_retries} connection attempts failed for {tool_name}")
-                        raise
-                    
-                    # For BlockingIOError specifically, add additional delay
-                    if "Resource temporarily unavailable" in str(e) or "BlockingIOError" in str(e):
-                        additional_delay = 1.0 * (attempt + 1)
-                        self.logger.info(f"Resource contention detected, adding {additional_delay:.2f}s additional delay")
-                        await asyncio.sleep(additional_delay)
-
-    @asynccontextmanager
-    async def _managed_mcp_session(self, server_params: StdioServerParameters, tool_name: str = "unknown"):
-        """
-        Context manager for MCP sessions with proper cleanup and error handling.
-        
-        Args:
-            server_params: MCP server parameters
-            tool_name: Name of the tool for logging
-            
-        Yields:
-            ClientSession instance
-        """
-        connection_manager = None
-        session = None
-        
-        try:
-            # Create connection with retry
-            connection_manager = await self._create_mcp_connection_with_retry(server_params, tool_name)
-            
-            # Use the connection manager
-            async with connection_manager as (read, write):  # type: ignore
-                # Create and initialize session
-                session = ClientSession(read, write)
-                await session.initialize()
-                self.logger.debug(f"MCP session initialized for {tool_name}")
-                
-                yield session
-            
-        except Exception as e:
-            self.logger.error(f"Error in managed MCP session for {tool_name}: {str(e)}")
-            raise
-
-    def set_proxy_variables(self):
-        """
-        Set proxy environment variables before LLM call.
-        Store original values for restoration.
-        """
-        try:
-            # Skip proxy settings for Ollama
-            if self.llm_provider == "ollama":
-                self.logger.debug("Skipping proxy configuration for Ollama")
-                return
-                
-            # Store original proxy environment variables
-            self._original_http_proxy = os.environ.get('HTTP_PROXY')
-            self._original_https_proxy = os.environ.get('HTTPS_PROXY')
-            self._original_http_proxy_lower = os.environ.get('http_proxy')
-            self._original_https_proxy_lower = os.environ.get('https_proxy')
-            
-            # Set LLM-specific proxy environment variables if configured
-            if self.http_proxy:
-                os.environ['HTTP_PROXY'] = self.http_proxy
-                os.environ['http_proxy'] = self.http_proxy
-                self.logger.info(f"Set HTTP_PROXY for LLM: {self.http_proxy}")
-            
-            if self.https_proxy:
-                os.environ['HTTPS_PROXY'] = self.https_proxy
-                os.environ['https_proxy'] = self.https_proxy
-                self.logger.info(f"Set HTTPS_PROXY for LLM: {self.https_proxy}")
-                
-            # Log current proxy environment for debugging
-            self.logger.debug(f"Current proxy environment - HTTP_PROXY: {os.environ.get('HTTP_PROXY')}, HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
-                
-        except Exception as e:
-            self.logger.debug(f"Warning during proxy setup: {e}")
-
-    def unset_proxy_variables(self):
-        """
-        Unset proxy environment variables after LLM call completion.
-        Restore original proxy environment variables.
-        """
-        try:
-            # Skip proxy restoration for Ollama
-            if self.llm_provider == "ollama":
-                self.logger.debug("No proxy variables to restore for Ollama")
-                return
-                
-            # Restore original proxy environment variables
-            if hasattr(self, '_original_http_proxy'):
-                if self._original_http_proxy is not None:
-                    os.environ['HTTP_PROXY'] = self._original_http_proxy
-                elif 'HTTP_PROXY' in os.environ:
-                    del os.environ['HTTP_PROXY']
-                    
-            if hasattr(self, '_original_https_proxy'):
-                if self._original_https_proxy is not None:
-                    os.environ['HTTPS_PROXY'] = self._original_https_proxy
-                elif 'HTTPS_PROXY' in os.environ:
-                    del os.environ['HTTPS_PROXY']
-                    
-            if hasattr(self, '_original_http_proxy_lower'):
-                if self._original_http_proxy_lower is not None:
-                    os.environ['http_proxy'] = self._original_http_proxy_lower
-                elif 'http_proxy' in os.environ:
-                    del os.environ['http_proxy']
-                    
-            if hasattr(self, '_original_https_proxy_lower'):
-                if self._original_https_proxy_lower is not None:
-                    os.environ['https_proxy'] = self._original_https_proxy_lower
-                elif 'https_proxy' in os.environ:
-                    del os.environ['https_proxy']
-                    
-            self.logger.debug("Restored original proxy environment variables")
-        except Exception as e:
-            self.logger.debug(f"Warning during proxy cleanup: {e}")
-    
     async def generate_response(self, user_message: str, include_history: bool = True) -> Dict[str, Any]:
         """
         Generate AI response using the configured model and MCP tools.
@@ -1237,22 +802,32 @@ class AIChatUtility:
             
             agent_response = None
             
+            self.configure_proxy()
+
             # Try to use MCP tools first if available
             if self.agent_mcp_configs:
                 self.logger.info("Using agent-specific MCP tools for response generation")
-                agent_response = await self.load_agent_specific_tools_with_persistent_connections(langchain_messages)
+                try:
+                    tools = await self.load_agent_specific_tools()
+                    if tools and self.model:
+                        try:
+                            agent = create_react_agent(self.model, tools)
+                            agent_response = await agent.ainvoke({"messages": langchain_messages})
+                        finally:
+                            self.remove_proxy()
+                except Exception as e:
+                    self.logger.warning(f"Failed to use agent-specific MCP tools, falling back to direct model: {e}")
             elif self.mcp_server_config:
                 self.logger.info("Using legacy MCP configuration for response generation")
                 # For legacy single MCP configuration, load tools and create agent
                 try:
                     tools = await self.load_agent_specific_tools()
                     if tools and self.model:
-                        # self.set_proxy_variables()
                         try:
                             agent = create_react_agent(self.model, tools)
                             agent_response = await agent.ainvoke({"messages": langchain_messages})
                         finally:
-                            self.unset_proxy_variables()
+                            self.remove_proxy()
                 except Exception as e:
                     self.logger.warning(f"Failed to use MCP tools, falling back to direct model: {e}")
             
@@ -1297,7 +872,7 @@ class AIChatUtility:
                             "used_tools": False
                         }
                     finally:
-                        self.unset_proxy_variables()
+                        self.remove_proxy()
                         
                 except (GroqAPIConnectionError, HttpxConnectError, HttpcoreConnectError, HttpxProxyError, ConnectionError) as conn_err:
                     last_error = conn_err
@@ -1358,59 +933,3 @@ class AIChatUtility:
                 "error": error_msg,
                 "response": "I apologize, but I encountered an error while processing your request. Please try again."
             }
-
-    def _test_huggingface_proxy_connection(self, proxy_url: str) -> bool:
-        """
-        Test if HuggingFace can connect through the proxy.
-        
-        Args:
-            proxy_url: Proxy URL to test
-            
-        Returns:
-            bool: True if connection successful, False otherwise
-        """
-        try:
-            import requests
-            import time
-            
-            # Test connection to HuggingFace hub with proxy
-            proxies = {
-                'http': proxy_url,
-                'https': proxy_url
-            }
-            
-            response = requests.get(
-                'https://huggingface.co',
-                proxies=proxies,
-                timeout=10,
-                headers={'User-Agent': 'viki-ai-test'}
-            )
-            
-            if response.status_code == 200:
-                self.logger.info("HuggingFace proxy test successful")
-                return True
-            else:
-                self.logger.warning(f"HuggingFace proxy test failed with status: {response.status_code}")
-                return False
-                
-        except Exception as e:
-            self.logger.warning(f"HuggingFace proxy test failed: {e}")
-            return False
-
-    def _suggest_huggingface_alternatives(self):
-        """Suggest alternatives when HuggingFace proxy fails."""
-        self.logger.error("=" * 60)
-        self.logger.error("HuggingFace Proxy Configuration Failed")
-        self.logger.error("=" * 60)
-        self.logger.error("HuggingFace has known issues with proxy configurations.")
-        self.logger.error("RECOMMENDED ALTERNATIVES:")
-        self.logger.error("1. Use OpenAI (excellent proxy support)")
-        self.logger.error("2. Use Groq (excellent proxy support)")
-        self.logger.error("3. Use Anthropic (excellent proxy support)")
-        self.logger.error("4. Use Cerebras (good proxy support)")
-        self.logger.error("5. Set proxy at OS level: export HTTP_PROXY=http://proxy:8080")
-        self.logger.error("6. Use direct model endpoints instead of HuggingFace Hub")
-        self.logger.error("=" * 60)
-# ============================================================================
-# USAGE EXAMPLE AND CONVENIENCE FUNCTIONS
-# ============================================================================

@@ -33,7 +33,8 @@ def _get_llm_proxy_settings():
     """Get LLM-specific proxy settings from environment variables."""
     return {
         'http_proxy': os.getenv("HTTPPROXY", None),
-        'https_proxy': os.getenv("HTTPSPROXY", None)
+        'https_proxy': os.getenv("HTTPSPROXY", None),
+        'no_proxy': os.getenv("NOPROXY", None)
     }
 
 # Chat Session endpoints
@@ -496,7 +497,8 @@ async def chat_with_ai(request: ChatAIRequest, db: Session = Depends(get_db)):
             system_prompt=getattr(agent, 'agt_system_prompt', None),
             agent_mcp_configs=agent_mcp_configs,  # Pass agent-specific MCP configs
             http_proxy=proxy_settings['http_proxy'],  # LLM-specific proxy settings
-            https_proxy=proxy_settings['https_proxy']  # LLM-specific proxy settings
+            https_proxy=proxy_settings['https_proxy'],  # LLM-specific proxy settings
+            no_proxy=proxy_settings['no_proxy']  # LLM-specific proxy settings
         )
         
         # 6. Build conversation history for AI context
