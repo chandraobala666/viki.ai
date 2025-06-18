@@ -60,9 +60,21 @@ def load_environment_variables(logger, env_path: str = None): # type: ignore
         HTTPS_PROXY = os.getenv("HTTPSPROXY", "")
         NO_PROXY = os.getenv("NOPROXY", "")
         
-        logger.info("HTTPPROXY (for LLM use only): %s", HTTP_PROXY if HTTP_PROXY else "Not set")
-        logger.info("HTTPSPROXY (for LLM use only): %s", HTTPS_PROXY if HTTPS_PROXY else "Not set")
-        logger.info("NOPROXY (available for use): %s", NO_PROXY if NO_PROXY else "Not set")
+        logger.info("HTTPPROXY : %s", HTTP_PROXY if HTTP_PROXY else "Not set")
+        logger.info("HTTPSPROXY : %s", HTTPS_PROXY if HTTPS_PROXY else "Not set")
+        logger.info("NOPROXY : %s", NO_PROXY if NO_PROXY else "Not set")
+
+        if HTTP_PROXY:
+            os.environ["HTTP_PROXY"]=HTTP_PROXY
+            os.environ["http_proxy"]=HTTP_PROXY
+        
+        if HTTPS_PROXY:
+            os.environ["HTTPS_PROXY"]=HTTPS_PROXY
+            os.environ["https_proxy"]=HTTPS_PROXY
+        
+        if NO_PROXY:
+            os.environ["NO_PROXY"]=NO_PROXY
+            os.environ["no_proxy"]=NO_PROXY
 
         # Update Flyway location if needed
         DEFAULT_CLASSPATH = os.path.join(os.getcwd(), "db", "flyway")
